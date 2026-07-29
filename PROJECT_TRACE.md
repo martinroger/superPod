@@ -18,13 +18,16 @@
    - Added direct raw iAP message processing API (`processRawBuffer`) to feed USB Bulk OUT packets directly into `espod` ringbuffers in RAM.
    - Cleaned up legacy `byte` usage to standard `uint8_t`, added Doxygen comment coverage and architecture documentation blocks.
 4. **Milestone 3 — Sourcing & Manifest Configuration**:
-   - Configured `main/idf_component.yml` with dependencies: `esp_tinyusb: "^2.0.0"`, `pschatzmann/ESP32-A2DP`, `pschatzmann/arduino-audio-tools`.
+   - Configured `main/idf_component.yml` with dependencies: `esp_tinyusb: "^2.0.0"`.
    - Parametrized FreeRTOS task core affinities in `Kconfig.projbuild` (Option B Swapped: Core 0 for BT/A2DP, Core 1 for USB/espod).
    - Configured I2S DAC pins (BCLK 27, WS 25, DOUT 26) and A2DP Sink name.
 5. **Milestone 4 — Main Application Orchestrator (`main/main.cpp`)**:
    - Built single-MCU orchestrator in `main/main.cpp` preserving donor function names (`initializeA2DPSink`, `initializeAVRCTask`, `connectionStateChanged`, `audioStateChanged`, `avrc_rn_play_pos_callback`, `avrc_metadata_callback`, `playStatusHandler`).
    - Connected USB Bulk OUT endpoint directly to `espod.processRawBuffer()`.
-   - Connected `espod` playback control handlers to `a2dp_sink` player functions, and AVRCP metadata callbacks to `espod` state updates.
+   - Connected `espod` playback control handlers to `bt_a2dp_sink` player functions, and AVRCP metadata callbacks to `espod` state updates.
+6. **Milestone 5 — Native Local Component Rewrite (`no-audiotools` Branch)**:
+   - Completely eliminated external managed component dependencies `pschatzmann/ESP32-A2DP` and `pschatzmann/arduino-audio-tools`.
+   - Implemented local native IDF component `components/bt_a2dp_sink` with `i2s_audio` sub-module using `esp_driver_i2s`.
 
 ## Prompts & History Log
 
@@ -60,3 +63,11 @@
   - Configured `main/idf_component.yml`, `Kconfig.projbuild`, `sdkconfig.defaults`.
   - Implemented `main/main.cpp` single-MCU application orchestrator.
   - Created `walkthrough.md` documenting completed architecture.
+
+### Entry 8: [No-AudioTools Native Component Rewrite]
+- **Date/Time**: 2026-07-29
+- **Branch**: `no-audiotools`
+- **Actions Taken**:
+  - Removed `pschatzmann/ESP32-A2DP` and `pschatzmann/arduino-audio-tools` dependencies.
+  - Created local component `components/bt_a2dp_sink` incorporating `i2s_audio` module.
+  - Rewrote `main/main.cpp` to use `bt_a2dp_sink` native C/C++ API.

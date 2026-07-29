@@ -14,7 +14,8 @@
   - USB Device event callbacks (`event_cb`).
 
 ## Component & Library Sourcing
-- **Dependency Management via YAML**: `ESP32-A2DP`, `arduino-audio-tools`, and `esp_tinyusb` (`^2.0.0`) MUST be sourced directly via the IDF Component Manager manifest (`idf_component.yml`) using git/registry dependencies, **not** as committed local component directory copies.
+- **Dependency Management via YAML**: `esp_tinyusb` (`^2.0.0`) sourced directly via the IDF Component Manager manifest (`idf_component.yml`).
+- **`bt_a2dp_sink` Component**: Native ESP-IDF A2DP Sink and I2S driver implementation contained in local IDF component `superPod/components/bt_a2dp_sink` (removing external `ESP32-A2DP` & `arduino-audio-tools` dependencies).
 - **`espod` Component**: Ported into `superPod/components/espod` as a hybrid Arduino library / ESP-IDF component.
 
 ## Coding Standards & Syntax Rules
@@ -34,8 +35,9 @@
   - USB <-> `espod` Direct In-Memory Software Bridge Task (Priority 10)
   - `espod` RX, Process, TX, and Timer Tasks (Priority 2-5)
 
-## Audio Subsystem (`a2dp_audio` & `audio-tools`)
-- **Sourced via YAML Manifest**: `pschatzmann/ESP32-A2DP` and `pschatzmann/arduino-audio-tools` declared in `main/idf_component.yml`.
+## Audio Subsystem (`bt_a2dp_sink` Local Component)
+- **Native Implementation**: `pschatzmann/ESP32-A2DP` and `pschatzmann/arduino-audio-tools` dependencies completely removed; replaced by local native ESP-IDF component `components/bt_a2dp_sink`.
+- **I2S Audio Driver**: Native master TX I2S driver using `esp_driver_i2s` (`i2s_std` mode).
 - **Audio Output**: Dedicated external DAC via standard I2S ONLY.
 - **Pin Configuration**: I2S signals (BCLK, WS, DOUT) configured dynamically via Kconfig (`CONFIG_I2S_BCLK_PIN`, etc.).
 - **Deprecated Features**: All references to AudioKit / ES8388 codec board configurations are strictly removed.
