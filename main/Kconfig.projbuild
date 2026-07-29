@@ -1,0 +1,71 @@
+menu "superPod Core Configuration"
+
+    menu "FreeRTOS Core & Task Affinities (Option B Swapped)"
+        config BT_CTRL_PIN_TO_CORE
+            int "Core ID for Bluetooth Controller Task"
+            default 0
+            help
+                Core assigned to low-level Bluetooth radio controller (0 = PRO_CPU, 1 = APP_CPU).
+
+        config BT_BLUEDROID_PIN_TO_CORE
+            int "Core ID for Bluedroid Host Stack"
+            default 0
+            help
+                Core assigned to Bluedroid host stack and A2DP Sink (0 = PRO_CPU, 1 = APP_CPU).
+
+        config TINYUSB_TASK_CORE
+            int "Core ID for TinyUSB Device Stack Task"
+            default 1
+            help
+                Core assigned to TinyUSB device task (0 = PRO_CPU, 1 = APP_CPU).
+
+        config ESPOD_TASK_CORE
+            int "Core ID for esPod Protocol Engine Tasks"
+            default 1
+            help
+                Core assigned to esPod Lingo processing tasks (0 = PRO_CPU, 1 = APP_CPU).
+    endmenu
+
+    menu "I2S External DAC Configuration"
+        config I2S_BCLK_PIN
+            int "I2S Bit Clock (BCLK) GPIO Pin"
+            default 27
+
+        config I2S_WS_PIN
+            int "I2S Word Select (WS/LRCK) GPIO Pin"
+            default 25
+
+        config I2S_DOUT_PIN
+            int "I2S Data Out (DOUT/SD) GPIO Pin"
+            default 26
+    endmenu
+
+    menu "Bluetooth A2DP Sink Configuration"
+        config A2DP_SINK_NAME
+            string "Bluetooth A2DP Sink Device Name"
+            default "superPod-A2DP"
+    endmenu
+
+    menu "USB PL2303 Bridge Configuration"
+        config EP_VENDOR_BULK_OUT
+            hex "Bulk OUT vendor endpoint address"
+            default 0x02
+
+        config EP_VENDOR_BULK_IN
+            hex "Bulk IN vendor endpoint address"
+            default 0x83
+
+        config EP_VENDOR_IRQ
+            hex "Interrupt vendor endpoint address"
+            default 0x81
+
+        config DTR_PIN
+            int "DTR pin to control resets"
+            default 5
+
+        config RTS_PIN
+            int "RTS pin to control resets"
+            default 6
+    endmenu
+
+endmenu

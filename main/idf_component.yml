@@ -1,0 +1,8 @@
+## IDF Component Manager Manifest File for superPod
+dependencies:
+  esp_tinyusb: "^2.0.0"
+  pschatzmann/ESP32-A2DP:
+    git: "https://github.com/pschatzmann/ESP32-A2DP.git"
+  pschatzmann/arduino-audio-tools:
+    git: "https://github.com/pschatzmann/arduino-audio-tools.git"
+  idf: ">=6.1"
