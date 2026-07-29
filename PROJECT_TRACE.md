@@ -29,9 +29,11 @@
    - Resolved build issues with pristine `managed_components` without modifying files inside the `managed_components` directory:
      * **Fix 1 (`audio_tools_compat.h`)**: Created `main/audio_tools_compat.h` providing `using std::min; using std::max;`, pre-including FreeRTOS system headers, and providing `SOC_ADC_SAMPLE_FREQ_THRES_*` fallbacks. Forced globally for C++ files via `add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_SOURCE_DIR}/main/audio_tools_compat.h>)` in top-level `CMakeLists.txt`.
      * **Fix 2 (`CONFIG_BT_SPP_ENABLED=y`)**: Added `CONFIG_BT_SPP_ENABLED=y` to `sdkconfig.defaults` to enable Bluedroid SPP support and expose `esp_spp_enhanced_init()`, resolving the undefined linker reference in `ESP32-A2DP`.
-     * **Fix 3 (`esp_driver_i2s` requirement)**: Explicitly listed `esp_driver_i2s`, `esp_driver_uart`, `esp_driver_gpio`, `driver`, `freertos`, `log` in `main/CMakeLists.txt`.
-7. **Milestone 6 — Build & Binary Verification**:
-   - Updated `partitions.csv` to allocate 3MB per app partition.
+     * **Fix 3 (`esp_driver_i2s` requirement)**: Attached `__idf_esp_driver_i2s` and driver include paths to managed component INTERFACE targets in top-level `CMakeLists.txt`.
+7. **Milestone 6 — Kconfig Refactoring & Logical Use Case Document**:
+   - Transferred hardcoded `#define` remnants in `main.cpp` (`AVRC_QUEUE_SIZE`, `PROCESS_AVRC_TASK_STACK_SIZE`, `PROCESS_AVRC_TASK_PRIORITY`, `USB_ESPOD_BRIDGE_TASK_STACK_SIZE`, `USB_ESPOD_BRIDGE_TASK_PRIORITY`, `A2DP_SINK_NAME`) into `main/Kconfig.projbuild`.
+   - Created [USE_CASES_AND_SEQUENCES.md](file:///home/martinroger/Documents/superPod/USE_CASES_AND_SEQUENCES.md) detailing cold boot early USB traffic, unexpected Bluetooth disconnection & auto-reconnect, USB iAP robustness (checksum errors, unplugging, high-frequency polling), rapid track skipping, and loopback prevention.
+8. **Milestone 7 — Final Build Verification**:
    - Built cleanly via `eim run "idf.py build" master`.
    - Result: `superPod.bin` (size 0x1d8e00 bytes) compiled and linked cleanly with 38% free space remaining in partition.
 
@@ -69,3 +71,10 @@
   - Added `CONFIG_BT_SPP_ENABLED=y` to `sdkconfig.defaults`.
   - Updated `partitions.csv` to 3MB app partitions.
   - Verified 100% successful compilation and linking with `eim run "idf.py build" master`.
+
+### Entry 8: [Use Cases Document & Kconfig Parameter Refactoring]
+- **Date/Time**: 2026-07-29
+- **Actions Taken**:
+  - Created `USE_CASES_AND_SEQUENCES.md` with Mermaid sequence diagrams.
+  - Moved `#define` remnants in `main.cpp` into `main/Kconfig.projbuild`.
+  - Re-verified clean 100% build execution with `eim run "idf.py build" master`.
