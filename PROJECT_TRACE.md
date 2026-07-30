@@ -78,3 +78,13 @@
   - Created `USE_CASES_AND_SEQUENCES.md` with Mermaid sequence diagrams.
   - Moved `#define` remnants in `main.cpp` into `main/Kconfig.projbuild`.
   - Re-verified clean 100% build execution with `eim run "idf.py build" master`.
+
+### Entry 9: [Centralized Antigravity Rules & Skills Propagation]
+- **Date/Time**: 2026-07-30
+- **Branch**: `main`
+- **Actions Taken**:
+  - Consolidated base (`base.geminirules`) and ESP-IDF (`esp-idf.geminirules`) rules into project `.geminirules`.
+  - Added Agent Operational Scope & Implementation Traceability Matrix to `REQUIREMENTS.md`.
+  - Confirmed global availability of `requirement-grilling`, `esp-development`, and `automated-meta-review` skills.
+  - Audited ESP32-S3 strapping pins (GPIO 0,3,45,46) and FreeRTOS task stack size floor (>=2048B).
+
