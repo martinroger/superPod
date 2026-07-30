@@ -1,0 +1,27 @@
+# Project Rules & Constraints (superPod / ESP32 Projects)
+
+## 1. Directory & File Boundaries
+- `managed_components/` is strictly READ-ONLY: Never modify, patch, or edit files inside `managed_components/`. Solve dependency or build issues in main application code, wrapper files, Kconfig, or via `main/idf_component.yml`. If files in `managed_components/` are modified, revert them immediately.
+- External dependencies (e.g., `ESP32-A2DP`, `arduino-audio-tools`) must be fetched via YAML component configuration (`idf_component.yml`), not stored as local component copies.
+
+## 2. Build Toolchain & Interrupt Thresholds
+- Build Command: Use the `eim` wrapper for ESP-IDF build commands (e.g., `eim idf.py build`) targeted for ESP-IDF v6.x (v6.1+ / v6.2 master).
+- Max Build Retries: If a build fails **10 consecutive times**, STOP tool execution immediately. Present a concise summary of the compilation failures and ask the user for guidance before attempting any further edits.
+- Standard API Verification: Refer to `espressif-docs` MCP tools or official docs when resolving ESP-IDF v6.x API breaks (e.g., TinyUSB stack changes).
+
+## 3. Architecture & Code Style Rules
+- Propose a Plan First: Always present an implementation plan before making structural changes or refactorings.
+- Legacy Syntax & Naming: Reuse original syntax, data structures, and function names from donor projects (`ipodesp32`, `ESPL2303_stack`, `espod`) to maintain codebase clarity and readability.
+- Documentation & Comments:
+  - Add Doxygen comment blocks (`/** ... */`) to every function.
+  - Write detailed architectural explanation blocks before newly introduced wrappers or major function changes.
+- Types & Macros:
+  - Convert unnecessary usage of `byte` to `uint8_t` (unless required for Arduino compatibility).
+  - Replace hardcoded `#define` macros in `main.cpp` with Kconfig entries.
+- Core Allocation & Audio Hardware:
+  - Hardware Target: ESP32-S3 / ESP32-S31. Audio output is transported over I2S only to an external DAC (no ES8388 codec).
+  - Core Pinning: Parametrize task core allocations via Kconfig (Core 0: BT/I2S, Core 1: USB TinyUSB & esPod logic) to prevent race conditions and CPU spin loops.
+
+## 4. Documentation & Git Workflow
+- MD Documentation Traces: Maintain updated Markdown traces (`WALKTHROUGH.md`, `USE_CASES_AND_SEQUENCES.md`, `REQUIREMENTS.md`) documenting characteristics of new functions, task sequences, disconnections, and timing/use-case matrices.
+- Git Commits: Prepare a detailed, clear commit message for approval before running `git commit`.
