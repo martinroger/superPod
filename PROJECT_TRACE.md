@@ -71,3 +71,13 @@
   - Removed `pschatzmann/ESP32-A2DP` and `pschatzmann/arduino-audio-tools` dependencies.
   - Created local component `components/bt_a2dp_sink` incorporating `i2s_audio` module.
   - Rewrote `main/main.cpp` to use `bt_a2dp_sink` native C/C++ API.
+
+### Entry 9: [Centralized Antigravity Rules & Skills Propagation]
+- **Date/Time**: 2026-07-30
+- **Branch**: `no-audiotools`
+- **Actions Taken**:
+  - Consolidated base (`base.geminirules`) and ESP-IDF (`esp-idf.geminirules`) rules into project `.geminirules`.
+  - Added Agent Operational Scope & Implementation Traceability Matrix to `REQUIREMENTS.md`.
+  - Confirmed global availability of `requirement-grilling`, `esp-development`, and `automated-meta-review` skills.
+  - Audited ESP32-S3 strapping pins (GPIO 0,3,45,46) and FreeRTOS task stack size floor (>=2048B).
+
