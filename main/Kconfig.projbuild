@@ -26,6 +26,38 @@ menu "superPod Core Configuration"
                 Core assigned to esPod Lingo processing tasks (0 = PRO_CPU, 1 = APP_CPU).
     endmenu
 
+    menu "Task Stack Sizes and Priorities"
+        config AVRC_QUEUE_SIZE
+            int "AVRCP Metadata Queue Depth"
+            default 32
+            help
+                Maximum number of pending AVRCP metadata items stored in queue.
+
+        config PROCESS_AVRC_TASK_STACK_SIZE
+            int "AVRCP Processing Task Stack Size"
+            default 4096
+            help
+                Stack size in bytes for the AVRCP metadata processing task.
+
+        config PROCESS_AVRC_TASK_PRIORITY
+            int "AVRCP Processing Task Priority"
+            default 6
+            help
+                Priority level for the AVRCP metadata processing task.
+
+        config USB_ESPOD_BRIDGE_TASK_STACK_SIZE
+            int "USB to esPod Bridge Task Stack Size"
+            default 4096
+            help
+                Stack size in bytes for the USB Bulk OUT <-> esPod software bridge task.
+
+        config USB_ESPOD_BRIDGE_TASK_PRIORITY
+            int "USB to esPod Bridge Task Priority"
+            default 10
+            help
+                Priority level for the USB Bulk OUT <-> esPod software bridge task.
+    endmenu
+
     menu "I2S External DAC Configuration"
         config I2S_BCLK_PIN
             int "I2S Bit Clock (BCLK) GPIO Pin"

@@ -50,27 +50,9 @@
 
 static const char *TAG = "SUPERPOD_MAIN";
 
-#pragma region Configuration Defines
-#ifndef A2DP_SINK_NAME
-#define A2DP_SINK_NAME "superPod-A2DP"
-#endif
-
-#ifndef AVRC_QUEUE_SIZE
-#define AVRC_QUEUE_SIZE 32
-#endif
-
-#ifndef PROCESS_AVRC_TASK_STACK_SIZE
-#define PROCESS_AVRC_TASK_STACK_SIZE 4096
-#endif
-
-#ifndef PROCESS_AVRC_TASK_PRIORITY
-#define PROCESS_AVRC_TASK_PRIORITY 6
-#endif
-
 #ifndef ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND
 #define ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND ESP_A2D_AUDIO_STATE_SUSPEND
 #endif
-#pragma endregion
 
 #pragma region Global Objects and Declarations
 esPod espod(1, -1, -1, 19200); // esPod in direct memory ingestion mode (no UART pins required)
@@ -170,7 +152,7 @@ static void processAVRCTask(void *pvParameters)
 void initializeA2DPSink()
 {
     bt_a2dp_sink_config_t config = {
-        .device_name = A2DP_SINK_NAME,
+        .device_name = CONFIG_A2DP_SINK_NAME,
         .i2s_config = {
             .bclk_pin = (gpio_num_t)CONFIG_I2S_BCLK_PIN,
             .ws_pin = (gpio_num_t)CONFIG_I2S_WS_PIN,
@@ -187,7 +169,7 @@ void initializeA2DPSink()
 
     ESP_ERROR_CHECK(bt_a2dp_sink_init(&config));
     ESP_ERROR_CHECK(bt_a2dp_sink_start());
-    ESP_LOGI(TAG, "A2DP Sink started: %s", A2DP_SINK_NAME);
+    ESP_LOGI(TAG, "A2DP Sink started: %s", CONFIG_A2DP_SINK_NAME);
 }
 
 /**
@@ -197,15 +179,15 @@ void initializeA2DPSink()
  */
 esp_err_t initializeAVRCTask()
 {
-    avrcMetadataQueue = xQueueCreate(AVRC_QUEUE_SIZE, sizeof(avrcMetadata));
+    avrcMetadataQueue = xQueueCreate(CONFIG_AVRC_QUEUE_SIZE, sizeof(avrcMetadata));
     if (avrcMetadataQueue == nullptr)
     {
         ESP_LOGE(TAG, "Failed to create metadata queue");
         return ESP_FAIL;
     }
 
-    xTaskCreatePinnedToCore(processAVRCTask, "processAVRCTask", PROCESS_AVRC_TASK_STACK_SIZE, NULL,
-                            PROCESS_AVRC_TASK_PRIORITY, &processAVRCTaskHandle, CONFIG_BT_BLUEDROID_PIN_TO_CORE);
+    xTaskCreatePinnedToCore(processAVRCTask, "processAVRCTask", CONFIG_PROCESS_AVRC_TASK_STACK_SIZE, NULL,
+                            CONFIG_PROCESS_AVRC_TASK_PRIORITY, &processAVRCTaskHandle, CONFIG_BT_BLUEDROID_PIN_TO_CORE);
     if (processAVRCTaskHandle == nullptr)
     {
         ESP_LOGE(TAG, "Failed to create processAVRCTask");
@@ -324,7 +306,8 @@ extern "C" void app_main(void)
     espod.resetState();
 
     // Start USB <-> espod bridge task on Core 1
-    xTaskCreatePinnedToCore(usb_espod_bridge_task, "usb_espod_bridge", 4096, NULL, 10, NULL, CONFIG_TINYUSB_TASK_CORE);
+    xTaskCreatePinnedToCore(usb_espod_bridge_task, "usb_espod_bridge", CONFIG_USB_ESPOD_BRIDGE_TASK_STACK_SIZE,
+                            NULL, CONFIG_USB_ESPOD_BRIDGE_TASK_PRIORITY, NULL, CONFIG_TINYUSB_TASK_CORE);
 
     // Initialize AVRCP task & Bluetooth A2DP Sink on Core 0 (Option B Swapped)
     if (initializeAVRCTask() != ESP_OK)
