@@ -14,8 +14,8 @@
   - USB Device event callbacks (`event_cb`).
 
 ## Component & Library Sourcing
-- **Dependency Management via YAML**: `esp_tinyusb` (`^2.0.0`) sourced directly via the IDF Component Manager manifest (`idf_component.yml`).
-- **`bt_a2dp_sink` Component**: Native ESP-IDF A2DP Sink and I2S driver implementation contained in local IDF component `superPod/components/bt_a2dp_sink` (removing external `ESP32-A2DP` & `arduino-audio-tools` dependencies).
+- **Dependency Management via YAML**: Only `esp_tinyusb` (`^2.0.0`) is sourced via the IDF Component Manager manifest (`idf_component.yml`). External Arduino C++ libraries (`ESP32-A2DP` and `arduino-audio-tools`) are completely removed from `idf_component.yml`.
+- **`bt_a2dp_sink` Component**: Native ESP-IDF A2DP Sink and I2S driver implementation contained in local IDF component `superPod/components/bt_a2dp_sink`.
 - **`espod` Component**: Ported into `superPod/components/espod` as a hybrid Arduino library / ESP-IDF component.
 
 ## Coding Standards & Syntax Rules
@@ -36,11 +36,12 @@
   - `espod` RX, Process, TX, and Timer Tasks (Priority 2-5)
 
 ## Audio Subsystem (`bt_a2dp_sink` Local Component)
-- **Native Implementation**: `pschatzmann/ESP32-A2DP` and `pschatzmann/arduino-audio-tools` dependencies completely removed; replaced by local native ESP-IDF component `components/bt_a2dp_sink`.
+- **Native Implementation**: External Arduino audio dependencies (`ESP32-A2DP` and `arduino-audio-tools`) are completely removed and replaced by the local native ESP-IDF C++ component `components/bt_a2dp_sink`.
 - **I2S Audio Driver**: Native master TX I2S driver using `esp_driver_i2s` (`i2s_std` mode).
 - **Audio Output**: Dedicated external DAC via standard I2S ONLY.
 - **Pin Configuration**: I2S signals (BCLK, WS, DOUT) configured dynamically via Kconfig (`CONFIG_I2S_BCLK_PIN`, etc.).
 - **Deprecated Features**: All references to AudioKit / ES8388 codec board configurations are strictly removed.
+
 
 ## USB Transceiver Subsystem (`pl2303_usb`)
 - **Native USB Driver**: TinyUSB Prolific PL2303 (`0x067B:0x2303`) vendor device emulation running natively on ESP32-S31 USB-OTG.
