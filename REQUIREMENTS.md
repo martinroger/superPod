@@ -44,6 +44,25 @@
 - **Native USB Driver**: TinyUSB Prolific PL2303 (`0x067B:0x2303`) vendor device emulation running natively on ESP32-S31 USB-OTG.
 - **Inter-Component Data Flow**: Route USB vendor EP data directly to/from `espod`'s direct raw message ringbuffers in internal single-MCU mode, with optional bridge mode to physical UART.
 
+## Agent Operational Scope & Technical Constraints
+- **Requirement Grilling**: Mandatory 3–5 question interactive interviewing during feature planning.
+- **Traceability Maintenance**: Maintain explicit mapping between agent operational scope, project constraints, and source code implementations in Markdown documentation.
+- **ESP-IDF v6.x Compliance**: Execute builds via `eim exec -- idf.py build` (or ESP-IDF Build MCP server).
+- **Target Strapping Verification**: Verify all GPIO assignments against ESP32-S3 strapping pins (GPIO 0, 3, 45, 46).
+- **Stack Allocation Floor**: Ensure all FreeRTOS tasks meet or exceed the 2048–4096 byte stack size requirement.
+
+## Implementation Traceability Matrix
+
+| Requirement / Constraint | Target Component / File | Implementation Details | Status |
+| :--- | :--- | :--- | :--- |
+| **ESP32-S3 Target Verification** | [`sdkconfig.defaults`](sdkconfig.defaults) | `CONFIG_IDF_TARGET="esp32s31"` | Verified |
+| **ESP-IDF v6.x Execution** | [`.geminirules`](.geminirules) | `eim exec -- idf.py build` enforced for virtual env | Verified |
+| **Strapping Pin Protection** | [`main/Kconfig.projbuild`](main/Kconfig.projbuild) | I2S BCLK(27), WS(25), DOUT(26); DTR(5), RTS(6) - None overlap with GPIO 0,3,45,46 | Verified |
+| **Task Stack Floor (>=2048B)** | [`main/main.cpp`](main/main.cpp) | `usb_espod_bridge_task` (4096B), `processAVRCTask` (4096B) | Verified |
+| **Native A2DP Sink & I2S** | [`components/bt_a2dp_sink`](components/bt_a2dp_sink) | Native `esp_driver_i2s` and Bluedroid A2DP/AVRCP implementation | Verified |
+| **USB PL2303 Emulation** | [`components/pl2303_usb`](components/pl2303_usb) | TinyUSB Prolific PL2303 vendor device emulation | Verified |
+| **iAP Lingo Engine** | [`components/espod`](components/espod) | Direct raw iAP message processing via `processRawBuffer` in RAM | Verified |
+
 ## Documentation & Traceability
 - Maintain `REQUIREMENTS.md` with all prompt-derived constraints and architecture rules.
 - Maintain `PROJECT_TRACE.md` with prompt history, technical deviations, subplans, and milestone status.
