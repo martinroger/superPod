@@ -59,7 +59,7 @@
 | **ESP-IDF v6.x Execution** | [`.geminirules`](.geminirules) | `eim exec -- idf.py build` enforced for virtual env | Verified |
 | **Strapping Pin Protection** | [`main/Kconfig.projbuild`](main/Kconfig.projbuild) | I2S BCLK(27), WS(25), DOUT(26); DTR(5), RTS(6) - None overlap with GPIO 0,3,45,46 | Verified |
 | **Task Stack Floor (>=2048B)** | [`main/main.cpp`](main/main.cpp) | `usb_espod_bridge_task` (4096B), `processAVRCTask` (4096B) | Verified |
-| **Native A2DP Sink & I2S** | [`components/bt_a2dp_sink`](components/bt_a2dp_sink) | Native `esp_driver_i2s` and Bluedroid A2DP/AVRCP implementation | Verified |
+| **A2DP Sink & AudioTools Sourcing** | [`main/idf_component.yml`](main/idf_component.yml) | Sourced via Component Manager (`ESP32-A2DP`, `arduino-audio-tools`) | Verified |
 | **USB PL2303 Emulation** | [`components/pl2303_usb`](components/pl2303_usb) | TinyUSB Prolific PL2303 vendor device emulation | Verified |
 | **iAP Lingo Engine** | [`components/espod`](components/espod) | Direct raw iAP message processing via `processRawBuffer` in RAM | Verified |
 
