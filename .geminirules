@@ -12,6 +12,8 @@
 - **Markdown Requirement & Constraint Tracking**: Document and track requirements, scope boundaries, and operational constraints used by the agent in explicit Markdown files (`REQUIREMENTS.md`, `CONSTRAINTS.md`, or inside `docs/`). Focus primarily on agent scope, design rules, platform/tooling constraints, and operational boundaries rather than exhaustive end-user feature manuals.
 - **Repo-Level Agent & Scope Summaries**: Maintain top-level Markdown summaries (`README.md`, `PROJECT_TRACE.md`) at the repository root detailing the project purpose, agent scope boundaries, technical constraints, and repo structure.
 - **Implementation Traceability**: Maintain clear traceability between agent constraints/requirements and their corresponding code implementations in an explicit **Implementation Traceability Matrix**. Keep documentation updated whenever agent scope or project constraints evolve.
+- **Portable Relative Markdown Links**: All file references inside repository Markdown (`.md`) files MUST use relative file paths (e.g. `[main/main.cpp](main/main.cpp)`). NEVER commit absolute local filesystem URLs (e.g. `file:///home/user/...` or `file:///Users/user/...`).
+- **Root Folder Cleanliness & Theory of Operation (`TOO.MD`)**: Keep root directory Markdown files focused (`README.md`, `LICENSE`, `REQUIREMENTS.md`). Sub-component architecture, data ingestion loops, and sequence diagrams should be documented in `TOO.MD` or within `/docs/`.
 
 ## 3. Directory & File Boundaries
 - `managed_components/` is strictly READ-ONLY: Never modify, patch, or edit files inside `managed_components/`. Solve dependency or build issues in main application code, wrapper files, Kconfig, or via `main/idf_component.yml`. If files in `managed_components/` are modified, revert them immediately.
@@ -19,6 +21,7 @@
 
 ## 4. Build Toolchain & Execution Standards
 - **Virtual Environment & Build Command**: For ESP-IDF >= v6.0 (v6.1+ / v6.2 master), enforce `eim` (Espressif Installation Manager) for virtual environment setup when executing `idf.py` commands (e.g., `eim exec -- idf.py build`). If an ESP-IDF Build MCP server is available, prefer using its native MCP tools.
+- **Kconfig / `sdkconfig` Mandatory `fullclean` Rule**: If any `Kconfig`, `Kconfig.projbuild`, `sdkconfig`, or `sdkconfig.*` defaults/override file is added, modified, or deleted, a `fullclean` build (`idf.py fullclean build` or `eim run "idf.py fullclean build"`) is **strictly mandatory** before building to ensure CMake cache re-evaluation.
 - **Max Build Retries**: If a build fails **10 consecutive times**, STOP tool execution immediately. Present a concise summary of the compilation failures and ask the user for guidance before attempting any further edits.
 - **MCP Documentation Lookup**: Use the `espressif-docs` MCP server (`search_espressif_sources`) as the authoritative source for command flags, `sdkconfig` options, and API specifications.
 
@@ -33,12 +36,14 @@
 - **FreeRTOS Core Pinning & Stack Allocation**:
   - Parametrize task core allocations via Kconfig (Core 0: BT/I2S, Core 1: USB TinyUSB & esPod logic) to prevent race conditions and CPU spin loops.
   - Verify task stack allocations: minimum **2048–4096 bytes** for tasks performing C standard library formatting (`printf`/`ESP_LOGx`), file system operations, or networking.
+- **Hardware Disconnect & Bus Recovery**: USB vendor endpoint daemons and Bluetooth A2DP audio handlers MUST handle disconnected states, unexpected unplugs, and missing buffer ACKs gracefully without infinite retry spin loops, watchdog resets, or task deadlocks.
 - **Legacy Syntax & Naming**: Reuse original syntax, data structures, and function names from donor projects (`ipodesp32`, `ESPL2303_stack`, `espod`) to maintain codebase clarity and readability.
 - **Types & Macros**:
   - Convert unnecessary usage of `byte` to `uint8_t` (unless required for Arduino compatibility).
   - Replace hardcoded `#define` macros in `main.cpp` with Kconfig entries.
 
 ## 7. Documentation, Comments & Git Workflow
-- **Comments & Docstrings**: Add Doxygen comment blocks (`/** ... */`) to every function. Write detailed architectural explanation blocks before newly introduced wrappers or major function changes. Maintain existing comments and docstrings.
+- **Comments & Docstrings**: Add Doxygen comment blocks (`/** ... */`) to every function. When writing docstrings for functions or macros with default parameter values, explicitly document default values inside `@param[in]` tags (e.g. `@param[in] target_core Task core affinity (Default: 1)`). Write detailed architectural explanation blocks before newly introduced wrappers or major function changes. Maintain existing comments and docstrings.
 - **MD Documentation Traces**: Maintain updated Markdown traces (`WALKTHROUGH.md`, `USE_CASES_AND_SEQUENCES.md`, `REQUIREMENTS.md`, `PROJECT_TRACE.md`) documenting characteristics of new functions, task sequences, disconnections, and timing/use-case matrices.
+- **Post-Build & Pre-Commit Documentation Sync**: Complete an architectural documentation verification pass after a successful build and before executing git commits to ensure Markdown specs stay in sync with application code updates.
 - **Git Commits**: Prepare a detailed, clear commit message for approval before running `git commit`.

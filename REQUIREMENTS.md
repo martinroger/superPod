@@ -58,13 +58,13 @@
 
 | Requirement / Constraint | Target Component / File | Implementation Details | Status |
 | :--- | :--- | :--- | :--- |
-| **ESP32-S3 Target Verification** | [`sdkconfig.defaults`](file:///home/martinroger/Documents/superPod/sdkconfig.defaults) | `CONFIG_IDF_TARGET="esp32s31"` | Verified |
-| **ESP-IDF v6.x Execution** | [`.geminirules`](file:///home/martinroger/Documents/superPod/.geminirules) | `eim exec -- idf.py build` enforced for virtual env | Verified |
-| **Strapping Pin Protection** | [`main/Kconfig.projbuild`](file:///home/martinroger/Documents/superPod/main/Kconfig.projbuild) | I2S BCLK(27), WS(25), DOUT(26); DTR(5), RTS(6) - None overlap with GPIO 0,3,45,46 | Verified |
-| **Task Stack Floor (>=2048B)** | [`main/main.cpp`](file:///home/martinroger/Documents/superPod/main/main.cpp) | `usb_espod_bridge_task` (4096B), `processAVRCTask` (4096B) | Verified |
-| **Native A2DP Sink & I2S** | [`components/bt_a2dp_sink`](file:///home/martinroger/Documents/superPod/components/bt_a2dp_sink) | Native `esp_driver_i2s` and Bluedroid A2DP/AVRCP implementation | Verified |
-| **USB PL2303 Emulation** | [`components/pl2303_usb`](file:///home/martinroger/Documents/superPod/components/pl2303_usb) | TinyUSB Prolific PL2303 vendor device emulation | Verified |
-| **iAP Lingo Engine** | [`components/espod`](file:///home/martinroger/Documents/superPod/components/espod) | Direct raw iAP message processing via `processRawBuffer` in RAM | Verified |
+| **ESP32-S3 Target Verification** | [`sdkconfig.defaults`](sdkconfig.defaults) | `CONFIG_IDF_TARGET="esp32s31"` | Verified |
+| **ESP-IDF v6.x Execution** | [`.geminirules`](.geminirules) | `eim exec -- idf.py build` enforced for virtual env | Verified |
+| **Strapping Pin Protection** | [`main/Kconfig.projbuild`](main/Kconfig.projbuild) | I2S BCLK(27), WS(25), DOUT(26); DTR(5), RTS(6) - None overlap with GPIO 0,3,45,46 | Verified |
+| **Task Stack Floor (>=2048B)** | [`main/main.cpp`](main/main.cpp) | `usb_espod_bridge_task` (4096B), `processAVRCTask` (4096B) | Verified |
+| **Native A2DP Sink & I2S** | [`components/bt_a2dp_sink`](components/bt_a2dp_sink) | Native `esp_driver_i2s` and Bluedroid A2DP/AVRCP implementation | Verified |
+| **USB PL2303 Emulation** | [`components/pl2303_usb`](components/pl2303_usb) | TinyUSB Prolific PL2303 vendor device emulation | Verified |
+| **iAP Lingo Engine** | [`components/espod`](components/espod) | Direct raw iAP message processing via `processRawBuffer` in RAM | Verified |
 
 ## Documentation & Traceability
 - Maintain `REQUIREMENTS.md` with all prompt-derived constraints and architecture rules.
