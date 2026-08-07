@@ -78,8 +78,18 @@ void playStatusHandler(PB_COMMAND playCommand);
 #pragma region USB to espod In-Memory Software Bridge Task
 
 /**
- * @brief FreeRTOS task bridging USB Bulk OUT data directly to espod raw ringbuffer,
- *        and pumping espod responses back to USB Bulk IN endpoint.
+ * @brief Outbound USB transmit handler callback for forwarding espod response frames to USB Bulk IN endpoint.
+ * 
+ * @param[in] data Pointer to raw iAP frame bytes.
+ * @param[in] len Length of data in bytes.
+ */
+static void usb_tx_handler(const uint8_t *data, size_t len)
+{
+    pl2303_usb_write_bytes(data, (uint32_t)len);
+}
+
+/**
+ * @brief FreeRTOS task bridging USB Bulk OUT data directly to espod raw ringbuffer using event notifications.
  * 
  * @param pvParameters Unused.
  */
@@ -87,17 +97,25 @@ static void usb_espod_bridge_task(void *pvParameters)
 {
     uint8_t usb_rx_buf[512];
 
+    // Register current task handle to receive TinyUSB Bulk OUT receive notifications
+    pl2303_usb_set_rx_task_handle(xTaskGetCurrentTaskHandle());
+
     while (1)
     {
-        // Read data from USB Bulk OUT endpoint
-        uint32_t rx_bytes = pl2303_usb_read_bytes(usb_rx_buf, sizeof(usb_rx_buf));
-        if (rx_bytes > 0)
+        // Wait for event notification from TinyUSB Bulk OUT callback (100ms safety timeout)
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
+
+        // Drain all available raw bytes from TinyUSB Bulk OUT endpoint
+        while (1)
         {
+            uint32_t rx_bytes = pl2303_usb_read_bytes(usb_rx_buf, sizeof(usb_rx_buf));
+            if (rx_bytes == 0)
+            {
+                break;
+            }
             ESP_LOGD(TAG, "USB -> espod: %lu bytes", rx_bytes);
             espod.processRawBuffer(usb_rx_buf, rx_bytes);
         }
-
-        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
@@ -301,8 +319,9 @@ extern "C" void app_main(void)
     // Initialize TinyUSB PL2303 Device Driver on Core 1 (Option B Swapped)
     ESP_ERROR_CHECK(pl2303_usb_init(CONFIG_TINYUSB_TASK_CORE));
 
-    // Attach playback controller callback to espod
+    // Attach playback controller and outbound USB TX callbacks to espod
     espod.attachPlayControlHandler(playStatusHandler);
+    espod.attachTxHandler(usb_tx_handler);
     espod.resetState();
 
     // Start USB <-> espod bridge task on Core 1

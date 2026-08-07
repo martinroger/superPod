@@ -47,6 +47,19 @@ To prevent race conditions, audio buffer underflows, or USB protocol timeouts, `
 
 ---
 
+## Documentation & References
+
+- [Theory of Operation (TOO) & Use Case Sequences](TOO.md)
+- [Project Requirements & Agent Scope](docs/REQUIREMENTS.md)
+- [Project Trace & Architecture Milestones](docs/PROJECT_TRACE.md)
+
+### Component Documentation
+- [iPod Protocol Component (`components/espod`)](components/espod/README.md)
+- [PL2303 USB Transceiver Component (`components/pl2303_usb`)](components/pl2303_usb/README.md)
+- [Bluetooth A2DP Sink Component (`components/bt_a2dp_sink`)](components/bt_a2dp_sink/README.md)
+
+---
+
 ## Quick Start: Cloning & Building
 
 1. **Clone the Repository**:
@@ -58,10 +71,10 @@ To prevent race conditions, audio buffer underflows, or USB protocol timeouts, `
 
 2. **Build Firmware**:
    ```bash
-   eim idf.py build
+   eim run "idf.py build"
    ```
 
 3. **Flash & Monitor**:
    ```bash
-   eim idf.py -p /dev/ttyACM0 flash monitor
+   eim run "idf.py -p /dev/ttyACM0 flash monitor"
    ```

@@ -1,4 +1,4 @@
-# superPod Project Requirements
+# superPod Project Requirements & Agent Scope
 
 ## Core Architecture & Goals
 - **Single-MCU Application Firmware**: Merge `ipodesp32`, `espod`, and `ESPL2303_stack` into a single ESP-IDF project (`superPod`).
@@ -15,12 +15,12 @@
 
 ## Component & Library Sourcing
 - **Dependency Management via YAML**: Only `esp_tinyusb` (`^2.0.0`) is sourced via the IDF Component Manager manifest (`idf_component.yml`). External Arduino C++ libraries (`ESP32-A2DP` and `arduino-audio-tools`) are completely removed from `idf_component.yml`.
-- **`bt_a2dp_sink` Component**: Native ESP-IDF A2DP Sink and I2S driver implementation contained in local IDF component `superPod/components/bt_a2dp_sink`.
-- **`espod` Component**: Ported into `superPod/components/espod` as a hybrid Arduino library / ESP-IDF component.
+- **`bt_a2dp_sink` Component**: Native ESP-IDF A2DP Sink and I2S driver implementation contained in local IDF component `components/bt_a2dp_sink`.
+- **`espod` Component**: Ported into `components/espod` as a hybrid Arduino library / ESP-IDF component.
 
 ## Coding Standards & Syntax Rules
 - **Syntax & Naming Preservation**: Reuse as much of the original syntax of the donor projects (`ipodesp32`, `espod`, `ESPL2303_stack`) as possible, including exact function names, class definitions, and variable names, to ensure transparent diffs and code readability.
-- **Doxygen Documentation**: Provide full Doxygen comment blocks (`/// @brief`, `@param`, `@return`) for every function and method.
+- **Doxygen Documentation**: Provide full Doxygen comment blocks (`/// @brief`, `@param`, `@return`) for every function and method. Default values must be explicitly documented inside `@param[in]` tags (e.g. `@param[in] target_core Task core affinity (Default: 1)`).
 - **Architecture Documentation Blocks**: For any profound code structural changes, new wrappers, or transport abstraction interfaces, include a detailed architectural explanation block directly preceding the function/class definition.
 - **Type Standardization (`uint8_t`)**: Convert unnecessary legacy `byte` usage to standard `uint8_t` across all files, preserving `typedef uint8_t byte;` under `#ifdef ARDUINO` only if required for Arduino API compatibility.
 
@@ -32,7 +32,7 @@
   - AVRCP Metadata Queue Processing Task (Priority 6)
 - **Core 1 (APP_CPU) — Dedicated USB & iPod Protocol Subsystem**:
   - TinyUSB Device Stack Task (`CONFIG_TINYUSB_TASK_CORE = 1`, Priority 15)
-  - USB <-> `espod` Direct In-Memory Software Bridge Task (Priority 10)
+  - USB <-> `espod` Direct In-Memory Software Bridge Task (Priority 10, Event-Driven Task Notifications)
   - `espod` RX, Process, TX, and Timer Tasks (Priority 2-5)
 
 ## Audio Subsystem (`bt_a2dp_sink` Local Component)
@@ -42,15 +42,14 @@
 - **Pin Configuration**: I2S signals (BCLK, WS, DOUT) configured dynamically via Kconfig (`CONFIG_I2S_BCLK_PIN`, etc.).
 - **Deprecated Features**: All references to AudioKit / ES8388 codec board configurations are strictly removed.
 
-
 ## USB Transceiver Subsystem (`pl2303_usb`)
 - **Native USB Driver**: TinyUSB Prolific PL2303 (`0x067B:0x2303`) vendor device emulation running natively on ESP32-S31 USB-OTG.
-- **Inter-Component Data Flow**: Route USB vendor EP data directly to/from `espod`'s direct raw message ringbuffers in internal single-MCU mode, with optional bridge mode to physical UART.
+- **Inter-Component Data Flow**: Route USB vendor EP data directly to/from `espod`'s direct raw message ringbuffers in internal single-MCU mode. USB RX Bulk OUT events trigger FreeRTOS task notifications (`tud_vendor_rx_cb` -> `xTaskNotifyGive`), eliminating 5ms CPU polling loops.
 
 ## Agent Operational Scope & Technical Constraints
 - **Requirement Grilling**: Mandatory 3–5 question interactive interviewing during feature planning.
 - **Traceability Maintenance**: Maintain explicit mapping between agent operational scope, project constraints, and source code implementations in Markdown documentation.
-- **ESP-IDF v6.x Compliance**: Execute builds via `eim exec -- idf.py build` (or ESP-IDF Build MCP server).
+- **ESP-IDF v6.x Compliance**: Execute builds via `eim run "idf.py build"`.
 - **Target Strapping Verification**: Verify all GPIO assignments against ESP32-S3 strapping pins (GPIO 0, 3, 45, 46).
 - **Stack Allocation Floor**: Ensure all FreeRTOS tasks meet or exceed the 2048–4096 byte stack size requirement.
 
@@ -58,15 +57,14 @@
 
 | Requirement / Constraint | Target Component / File | Implementation Details | Status |
 | :--- | :--- | :--- | :--- |
-| **ESP32-S3 Target Verification** | [`sdkconfig.defaults`](sdkconfig.defaults) | `CONFIG_IDF_TARGET="esp32s31"` | Verified |
-| **ESP-IDF v6.x Execution** | [`.geminirules`](.geminirules) | `eim exec -- idf.py build` enforced for virtual env | Verified |
-| **Strapping Pin Protection** | [`main/Kconfig.projbuild`](main/Kconfig.projbuild) | I2S BCLK(27), WS(25), DOUT(26); DTR(5), RTS(6) - None overlap with GPIO 0,3,45,46 | Verified |
-| **Task Stack Floor (>=2048B)** | [`main/main.cpp`](main/main.cpp) | `usb_espod_bridge_task` (4096B), `processAVRCTask` (4096B) | Verified |
-| **Native A2DP Sink & I2S** | [`components/bt_a2dp_sink`](components/bt_a2dp_sink) | Native `esp_driver_i2s` and Bluedroid A2DP/AVRCP implementation | Verified |
-| **USB PL2303 Emulation** | [`components/pl2303_usb`](components/pl2303_usb) | TinyUSB Prolific PL2303 vendor device emulation | Verified |
-| **iAP Lingo Engine** | [`components/espod`](components/espod) | Direct raw iAP message processing via `processRawBuffer` in RAM | Verified |
+| **ESP32-S3 Target Verification** | [`sdkconfig.defaults`](../sdkconfig.defaults) | `CONFIG_IDF_TARGET="esp32s31"` | Verified |
+| **ESP-IDF v6.x Execution** | [`../.geminirules`](../.geminirules) | `eim run "idf.py build"` enforced for virtual env | Verified |
+| **Strapping Pin Protection** | [`main/Kconfig.projbuild`](../main/Kconfig.projbuild) | I2S BCLK(27), WS(25), DOUT(26); DTR(5), RTS(6) - None overlap with GPIO 0,3,45,46 | Verified |
+| **Task Stack Floor (>=2048B)** | [`main/main.cpp`](../main/main.cpp) | `usb_espod_bridge_task` (4096B), `processAVRCTask` (4096B) | Verified |
+| **Native A2DP Sink & I2S** | [`components/bt_a2dp_sink`](../components/bt_a2dp_sink) | Native `esp_driver_i2s` and Bluedroid A2DP/AVRCP implementation | Verified |
+| **USB PL2303 Emulation** | [`components/pl2303_usb`](../components/pl2303_usb) | TinyUSB Prolific PL2303 vendor device emulation with `tud_vendor_rx_cb` notification | Verified |
+| **iAP Lingo Engine** | [`components/espod`](../components/espod) | Direct raw iAP message processing via `processRawBuffer` & outbound transport callback `attachTxHandler` | Verified |
 
 ## Documentation & Traceability
-- Maintain `REQUIREMENTS.md` with all prompt-derived constraints and architecture rules.
-- Maintain `PROJECT_TRACE.md` with prompt history, technical deviations, subplans, and milestone status.
-
+- Maintain `docs/REQUIREMENTS.md` with all prompt-derived constraints and architecture rules.
+- Maintain `docs/PROJECT_TRACE.md` with prompt history, technical deviations, subplans, and milestone status.

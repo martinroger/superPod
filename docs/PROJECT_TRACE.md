@@ -28,6 +28,10 @@
 6. **Milestone 5 — Native Local Component Rewrite (`no-audiotools` Branch)**:
    - Completely eliminated external managed component dependencies `pschatzmann/ESP32-A2DP` and `pschatzmann/arduino-audio-tools`.
    - Implemented local native IDF component `components/bt_a2dp_sink` with `i2s_audio` sub-module using `esp_driver_i2s`.
+7. **Milestone 6 — Bidirectional USB Bridge & Event-Driven Notification Refactor**:
+   - Added transport-agnostic `attachTxHandler(rawTxHandler_t txHandler)` callback to `esPod` so `_txTask` routes outbound response frames directly to `pl2303_usb_write_bytes()`.
+   - Implemented `tud_vendor_rx_cb` TinyUSB Bulk OUT callback in `pl2303_usb` to notify `usb_espod_bridge_task` via FreeRTOS task notifications (`xTaskNotifyGive` / `ulTaskNotifyTake`), eliminating the 5ms polling loop (`vTaskDelay(5)`).
+   - Added rich step-by-step logic comments across `esPod.cpp`.
 
 ## Prompts & History Log
 
@@ -62,7 +66,6 @@
   - Implemented `components/espod` (Hybridized Apple iPod protocol engine component with direct raw iAP ingestion).
   - Configured `main/idf_component.yml`, `Kconfig.projbuild`, `sdkconfig.defaults`.
   - Implemented `main/main.cpp` single-MCU application orchestrator.
-  - Created `walkthrough.md` documenting completed architecture.
 
 ### Entry 8: [No-AudioTools Native Component Rewrite]
 - **Date/Time**: 2026-07-29
@@ -72,12 +75,12 @@
   - Created local component `components/bt_a2dp_sink` incorporating `i2s_audio` module.
   - Rewrote `main/main.cpp` to use `bt_a2dp_sink` native C/C++ API.
 
-### Entry 9: [Centralized Antigravity Rules & Skills Propagation]
-- **Date/Time**: 2026-07-30
+### Entry 9: [Direct USB Bridge Optimization & Documentation Restructuring]
+- **Date/Time**: 2026-08-07
 - **Branch**: `no-audiotools`
 - **Actions Taken**:
-  - Consolidated base (`base.geminirules`) and ESP-IDF (`esp-idf.geminirules`) rules into project `.geminirules`.
-  - Added Agent Operational Scope & Implementation Traceability Matrix to `REQUIREMENTS.md`.
-  - Confirmed global availability of `requirement-grilling`, `esp-development`, and `automated-meta-review` skills.
-  - Audited ESP32-S3 strapping pins (GPIO 0,3,45,46) and FreeRTOS task stack size floor (>=2048B).
-
+  - Enforced Doxygen `@param[in]` standards and in-function comments in `esPod.cpp`.
+  - Added `attachTxHandler` to `esPod` for outbound USB frame transmission.
+  - Implemented `tud_vendor_rx_cb` task notification bridge in `pl2303_usb` and `main.cpp`.
+  - Reorganized root documentation (`TOO.md` at root, `REQUIREMENTS.md` and `PROJECT_TRACE.md` moved to `docs/`).
+  - Generated `README.md`, `docs/TOO.md`, and `docs/API.md` for all 3 components.
