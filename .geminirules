@@ -19,6 +19,8 @@
 
 ## 4. Build Toolchain & Execution Standards
 - **Virtual Environment & Build Command**: For ESP-IDF >= v6.0 (v6.1+ / v6.2 master), enforce `eim` (Espressif Installation Manager) for virtual environment setup when executing `idf.py` commands (e.g., `eim exec -- idf.py build`). If an ESP-IDF Build MCP server is available, prefer using its native MCP tools.
+- **Branch Switch & New Session `fullclean` Rule**: Whenever switching git branches or starting a new conversation session, a `fullclean` build (`eim run "idf.py fullclean build"` or `idf.py fullclean build`) is **strictly mandatory** on the first compilation attempt. This guarantees that stale CMake build artifacts, cached dependencies, or objects from previous branches/conversations are completely purged.
+- **Kconfig / `sdkconfig` Mandatory `fullclean` Rule**: If any `Kconfig`, `Kconfig.projbuild`, `sdkconfig`, or `sdkconfig.*` defaults/override file is added, modified, or deleted, a `fullclean` build (`idf.py fullclean build` or `eim run "idf.py fullclean build"`) is **strictly mandatory** before building to ensure CMake cache re-evaluation.
 - **Max Build Retries**: If a build fails **10 consecutive times**, STOP tool execution immediately. Present a concise summary of the compilation failures and ask the user for guidance before attempting any further edits.
 - **MCP Documentation Lookup**: Use the `espressif-docs` MCP server (`search_espressif_sources`) as the authoritative source for command flags, `sdkconfig` options, and API specifications.
 
