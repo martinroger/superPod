@@ -74,6 +74,16 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
  */
 esp_err_t pl2303_usb_init(int task_core);
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+/**
+ * @brief Sets FreeRTOS task handle to notify when USB Bulk OUT data arrives.
+ * 
+ * @param[in] task_handle Task handle to notify on USB RX event (or NULL to disable).
+ */
+void pl2303_usb_set_rx_task_handle(TaskHandle_t task_handle);
+
 /**
  * @brief Reads data received from USB Host via Vendor Bulk OUT endpoint.
  * 

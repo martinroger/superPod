@@ -311,6 +311,26 @@ esp_err_t pl2303_usb_init(int task_core)
     return ESP_OK;
 }
 
+static TaskHandle_t s_rx_task_handle = NULL;
+
+/// @brief Registers task handle to receive FreeRTOS task notifications when TinyUSB receives Bulk OUT data
+void pl2303_usb_set_rx_task_handle(TaskHandle_t task_handle)
+{
+    s_rx_task_handle = task_handle;
+}
+
+/// @brief TinyUSB Vendor RX callback invoked when Bulk OUT data arrives from host
+extern "C" void tud_vendor_rx_cb(uint8_t idx, const uint8_t *buffer, uint16_t bufsize)
+{
+    (void)idx;
+    (void)buffer;
+    (void)bufsize;
+    if (s_rx_task_handle != NULL)
+    {
+        xTaskNotifyGive(s_rx_task_handle);
+    }
+}
+
 /// @brief Reads incoming USB data from Vendor Bulk OUT endpoint
 uint32_t pl2303_usb_read_bytes(uint8_t *buffer, uint32_t bufsize)
 {

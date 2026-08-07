@@ -120,8 +120,16 @@ void esPod::resetState()
 
 void esPod::attachPlayControlHandler(playStatusHandler_t playHandler)
 {
+    // Save pointer to the user-supplied playback control handler
     _playStatusHandler = playHandler;
     ESP_LOGI(TAG, "playStatusHandler attached");
+}
+
+void esPod::attachTxHandler(rawTxHandler_t txHandler)
+{
+    // Save pointer to external raw transport transmit function (e.g., TinyUSB PL2303 write)
+    _rawTxHandler = txHandler;
+    ESP_LOGI(TAG, "rawTxHandler attached");
 }
 
 #pragma endregion
@@ -149,11 +157,16 @@ size_t esPod::processRawBuffer(const uint8_t *data, size_t len)
 
 void esPod::play(bool noLoop)
 {
+    // Transition internal playback engine state to PLAYING
     playStatus = PB_STATE_PLAYING;
+
+    // Notify connected accessory host if Extended Lingo (0x04) notifications are active
     if (playStatusNotificationState == NOTIF_ON)
     {
         L0x04::_0x27_PlayStatusNotification(this, 0x01, currentTrackIndex);
     }
+
+    // Trigger external playback controller callback unless internal loop update is requested
     if (!noLoop && _playStatusHandler != nullptr)
     {
         _playStatusHandler(PB_CMD_PLAY);
@@ -163,11 +176,16 @@ void esPod::play(bool noLoop)
 
 void esPod::pause(bool noLoop)
 {
+    // Transition internal playback engine state to PAUSED
     playStatus = PB_STATE_PAUSED;
+
+    // Send play status notification frame to host if notification engine is enabled
     if (playStatusNotificationState == NOTIF_ON)
     {
         L0x04::_0x27_PlayStatusNotification(this, 0x01, currentTrackIndex);
     }
+
+    // Trigger external play controller (e.g., A2DP sink pause)
     if (!noLoop && _playStatusHandler != nullptr)
     {
         _playStatusHandler(PB_CMD_PAUSE);
@@ -177,11 +195,16 @@ void esPod::pause(bool noLoop)
 
 void esPod::stop(bool noLoop)
 {
+    // Transition internal engine state to STOPPED
     playStatus = PB_STATE_STOPPED;
+
+    // Send stopped notification frame to accessory host
     if (playStatusNotificationState == NOTIF_ON)
     {
         L0x04::_0x27_PlayStatusNotification(this, 0x00);
     }
+
+    // Trigger external play controller (e.g., A2DP sink stop)
     if (!noLoop && _playStatusHandler != nullptr)
     {
         _playStatusHandler(PB_CMD_STOP);
@@ -191,7 +214,10 @@ void esPod::stop(bool noLoop)
 
 void esPod::updatePlayPosition(uint32_t position)
 {
+    // Update active play position in milliseconds
     playPosition = position;
+
+    // Push periodic play position updates (0x04) to host if notifications are subscribed
     if (playStatusNotificationState == NOTIF_ON)
     {
         L0x04::_0x27_PlayStatusNotification(this, 0x04, playPosition);
@@ -200,6 +226,7 @@ void esPod::updatePlayPosition(uint32_t position)
 
 void esPod::updateAlbumName(const char *incAlbumName)
 {
+    // Update album string only if changed to prevent redundant ACK signaling
     if (incAlbumName && strcmp(albumName, incAlbumName) != 0)
     {
         strncpy(albumName, incAlbumName, sizeof(albumName) - 1);
@@ -210,6 +237,7 @@ void esPod::updateAlbumName(const char *incAlbumName)
 
 void esPod::updateArtistName(const char *incArtistName)
 {
+    // Update artist string only if changed
     if (incArtistName && strcmp(artistName, incArtistName) != 0)
     {
         strncpy(artistName, incArtistName, sizeof(artistName) - 1);
@@ -220,6 +248,7 @@ void esPod::updateArtistName(const char *incArtistName)
 
 void esPod::updateTrackTitle(const char *incTrackTitle)
 {
+    // Update track title string only if changed
     if (incTrackTitle && strcmp(trackTitle, incTrackTitle) != 0)
     {
         strncpy(trackTitle, incTrackTitle, sizeof(trackTitle) - 1);
@@ -230,6 +259,7 @@ void esPod::updateTrackTitle(const char *incTrackTitle)
 
 void esPod::updateTrackDuration(uint32_t incTrackDuration)
 {
+    // Update track duration value in milliseconds
     if (trackDuration != incTrackDuration)
     {
         trackDuration = incTrackDuration;
@@ -240,6 +270,7 @@ void esPod::updateTrackDuration(uint32_t incTrackDuration)
 
 void esPod::_checkAllMetaUpdated()
 {
+    // Aggregate metadata gatekeeper: clear update flags when metadata items arrive
     if (_trackTitleUpdated || _artistNameUpdated || _albumNameUpdated)
     {
         _trackTitleUpdated = false;
@@ -247,6 +278,7 @@ void esPod::_checkAllMetaUpdated()
         _albumNameUpdated = false;
         _trackDurationUpdated = false;
 
+        // If a track change command was waiting on metadata update, release the pending iPod ACK
         if (trackChangeAckPending != 0x00)
         {
             if (trackChangeAckPending <= 0xFF)
@@ -300,6 +332,7 @@ void esPod::_rxTask(void *pvParameters)
 
     while (1)
     {
+        // Polled UART hardware ingestion task (active when hardware UART RX/TX pins are assigned)
         if (esp->_rxPin >= 0 && esp->_txPin >= 0 && uart_is_driver_installed(esp->_uartPort))
         {
             int rxLen = uart_read_bytes(esp->_uartPort, rxBuf, sizeof(rxBuf), pdMS_TO_TICKS(10));
@@ -310,6 +343,7 @@ void esPod::_rxTask(void *pvParameters)
         }
         else
         {
+            // Yield CPU when running in direct USB single-MCU mode without physical UART pins
             vTaskDelay(pdMS_TO_TICKS(10));
         }
     }
@@ -322,10 +356,14 @@ void esPod::_processTask(void *pvParameters)
 
     while (1)
     {
+        // Block indefinitely until raw iAP frame data arrives in command ringbuffer
         uint8_t *item = (uint8_t *)xRingbufferReceive(esp->_cmdRingBuffer, &itemSize, portMAX_DELAY);
         if (item != NULL && itemSize > 0)
         {
+            // Parse frame header, verify checksum, and dispatch to target Lingo handler
             esp->_processPacket(item, itemSize);
+
+            // Return item back to ringbuffer storage pool
             vRingbufferReturnItem(esp->_cmdRingBuffer, (void *)item);
         }
     }
@@ -338,14 +376,23 @@ void esPod::_txTask(void *pvParameters)
 
     while (1)
     {
+        // Block waiting for outbound iAP response packets queued by Lingo handlers
         if (xQueueReceive(esp->_txQueue, &txCmd, portMAX_DELAY) == pdTRUE)
         {
             if (txCmd.payload != nullptr && txCmd.length > 0)
             {
-                if (esp->_rxPin >= 0 && esp->_txPin >= 0 && uart_is_driver_installed(esp->_uartPort))
+                // Route outbound frame: priority to attached custom transport callback (e.g. TinyUSB PL2303)
+                if (esp->_rawTxHandler != nullptr)
                 {
+                    esp->_rawTxHandler(txCmd.payload, txCmd.length);
+                }
+                else if (esp->_rxPin >= 0 && esp->_txPin >= 0 && uart_is_driver_installed(esp->_uartPort))
+                {
+                    // Fallback to physical hardware UART pins if assigned
                     uart_write_bytes(esp->_uartPort, (const char *)txCmd.payload, txCmd.length);
                 }
+
+                // Recast and return payload buffer pointer to static free buffer pool
                 uint8_t *bufPtr = txCmd.payload;
                 xQueueSend(esp->_txFreeBufferQueue, &bufPtr, 0);
             }
@@ -360,8 +407,10 @@ void esPod::_timerTask(void *pvParameters)
 
     while (1)
     {
+        // Block waiting for software timer callback messages (delayed ACKs)
         if (xQueueReceive(esp->_timerQueue, &msg, portMAX_DELAY) == pdTRUE)
         {
+            // Dispatch delayed iPod ACK response to corresponding Lingo protocol handler
             switch (msg.targetLingo)
             {
             case 0x00:
@@ -452,14 +501,18 @@ void esPod::_queuePacketToFront(const uint8_t *byteArray, uint32_t len)
 
 void esPod::_processPacket(const uint8_t *byteArray, size_t len)
 {
+    // Validate minimal iAP frame length (header + len + lingo + checksum = 5 bytes min) and preamble 0xFF 0x55
     if (len < 5 || byteArray[0] != 0xFF || byteArray[1] != 0x55)
         return;
 
     uint8_t payloadLen = byteArray[2];
     const uint8_t *lingoPtr = &byteArray[3];
+
+    // Compute frame checksum starting at Lingo ID
     uint8_t calcSum = _checksum(lingoPtr, payloadLen);
     uint8_t rxSum = byteArray[3 + payloadLen];
 
+    // Verify checksum matches expected frame trailer
     if (calcSum != rxSum)
     {
         ESP_LOGE(TAG, "Checksum error: calc 0x%02x vs rx 0x%02x", calcSum, rxSum);
@@ -470,6 +523,7 @@ void esPod::_processPacket(const uint8_t *byteArray, size_t len)
     const uint8_t *cmdData = &lingoPtr[1];
     uint32_t cmdLen = payloadLen - 1;
 
+    // Route command payload to target Lingo state machine handler
     switch (lingoID)
     {
     case 0x00:

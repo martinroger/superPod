@@ -43,6 +43,9 @@ public:
     /// @brief External callback function type for controlling audio source playback FROM the esPod object
     typedef void playStatusHandler_t(PB_COMMAND playControlCommand);
 
+    /// @brief External callback function type for sending raw outbound iAP frame bytes over custom transport (e.g. TinyUSB PL2303)
+    typedef void rawTxHandler_t(const uint8_t *data, size_t len);
+
     // State variables
     bool extendedInterfaceModeActive = false; // Indicates extended interface mode is active (Lingo 0x04)
     bool disabled = true;                     // Disables parsing while starting up or disconnected
@@ -79,10 +82,10 @@ public:
     /**
      * @brief Master constructor for esPod class.
      * 
-     * @param uartNum Hardware UART port number (1 for UART_NUM_1).
-     * @param rxPin RX pin number (-1 for default/unassigned).
-     * @param txPin TX pin number (-1 for default/unassigned).
-     * @param baud Baudrate (19200 default for Apple AAP).
+     * @param[in] uartNum Hardware UART port number (Default: 1).
+     * @param[in] rxPin RX pin number (Default: -1 for unassigned/direct USB mode).
+     * @param[in] txPin TX pin number (Default: -1 for unassigned/direct USB mode).
+     * @param[in] baud Baudrate (Default: 19200 for Apple AAP).
      */
     esPod(uint8_t uartNum = 1, int rxPin = -1, int txPin = -1, uint32_t baud = 19200);
 
@@ -99,9 +102,16 @@ public:
     /**
      * @brief Attaches external play control callback function to synchronize esPod commands with audio source.
      * 
-     * @param playHandler Pointer to playStatusHandler_t callback function.
+     * @param[in] playHandler Pointer to playStatusHandler_t callback function.
      */
     void attachPlayControlHandler(playStatusHandler_t playHandler);
+
+    /**
+     * @brief Attaches external raw transport TX callback function to send outbound iAP frames (e.g. over USB).
+     * 
+     * @param[in] txHandler Pointer to rawTxHandler_t callback function.
+     */
+    void attachTxHandler(rawTxHandler_t txHandler);
 
     /**
      * @brief Direct Raw iAP Message Processing API.
@@ -236,4 +246,5 @@ private:
     const char *_serialNumber = "AB345F7HIJK";
 
     playStatusHandler_t *_playStatusHandler = nullptr;
+    rawTxHandler_t *_rawTxHandler = nullptr;
 };
