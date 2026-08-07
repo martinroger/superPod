@@ -137,10 +137,12 @@ static void processAVRCTask(void *pvParameters)
 
     while (true)
     {
+        // Block indefinitely until an AVRCP metadata item is received from the queue
         if (xQueueReceive(avrcMetadataQueue, &incMetadata, portMAX_DELAY) == pdTRUE)
         {
             if (incMetadata.payload != nullptr)
             {
+                // Route metadata payload to appropriate esPod state update method
                 switch (incMetadata.id)
                 {
                 case ESP_AVRC_MD_ATTR_ALBUM:
@@ -156,6 +158,7 @@ static void processAVRCTask(void *pvParameters)
                     espod.updateTrackDuration((uint32_t)atoi((char *)incMetadata.payload));
                     break;
                 }
+                // Free dynamically allocated payload string after esPod state update
                 free(incMetadata.payload);
                 incMetadata.payload = nullptr;
             }
@@ -168,16 +171,18 @@ static void processAVRCTask(void *pvParameters)
 #pragma region Helper Function Definitions
 
 /**
- * @brief Configures I2S DAC pins and initializes the Bluetooth A2DP Sink with AudioTools I2S output.
+ * @brief Configures I2S DAC GPIO pins and initializes the Bluetooth A2DP Sink with AudioTools I2S output.
  */
 void initializeA2DPSink()
 {
+    // Configure I2S master TX mode with pins defined in Kconfig
     auto config = i2s.defaultConfig(TX_MODE);
     config.pin_bck = CONFIG_I2S_BCLK_PIN;
     config.pin_ws = CONFIG_I2S_WS_PIN;
     config.pin_data = CONFIG_I2S_DOUT_PIN;
     i2s.begin(config);
 
+    // Bind AudioTools I2S stream to BluetoothA2DPSink
     a2dp_sink.set_output(i2s);
     a2dp_sink.set_auto_reconnect(true, 10000);
     a2dp_sink.set_on_connection_state_changed(connectionStateChanged);
@@ -187,17 +192,19 @@ void initializeA2DPSink()
                                                ESP_AVRC_MD_ATTR_ALBUM | ESP_AVRC_MD_ATTR_PLAYING_TIME);
     a2dp_sink.set_avrc_rn_play_pos_callback(avrc_rn_play_pos_callback, 1);
 
+    // Start Bluetooth A2DP Sink service with configured device name
     a2dp_sink.start(CONFIG_A2DP_SINK_NAME);
     ESP_LOGI(TAG, "A2DP Sink started: %s", CONFIG_A2DP_SINK_NAME);
 }
 
 /**
- * @brief Initializes AVRCP metadata queue and task.
+ * @brief Initializes AVRCP metadata queue and low-priority processing task.
  * 
- * @return esp_err_t ESP_OK on success.
+ * @return esp_err_t ESP_OK on success, or ESP_FAIL if queue/task creation fails.
  */
 esp_err_t initializeAVRCTask()
 {
+    // Create FreeRTOS queue for buffering incoming AVRCP metadata items
     avrcMetadataQueue = xQueueCreate(CONFIG_AVRC_QUEUE_SIZE, sizeof(avrcMetadata));
     if (avrcMetadataQueue == nullptr)
     {
@@ -205,6 +212,7 @@ esp_err_t initializeAVRCTask()
         return ESP_FAIL;
     }
 
+    // Launch low-priority AVRCP processing task on Core 0 (PRO_CPU)
     xTaskCreatePinnedToCore(processAVRCTask, "processAVRCTask", CONFIG_PROCESS_AVRC_TASK_STACK_SIZE, NULL,
                             CONFIG_PROCESS_AVRC_TASK_PRIORITY, &processAVRCTaskHandle, CONFIG_BT_BLUEDROID_PIN_TO_CORE);
     if (processAVRCTaskHandle == nullptr)
@@ -220,6 +228,14 @@ esp_err_t initializeAVRCTask()
 
 #pragma region A2DP / AVRCP Callback Definitions
 
+/**
+ * @brief Handles Bluetooth A2DP connection state changes.
+ * 
+ * Enables esPod protocol processing on peer connection, and disables/resets esPod state on disconnection.
+ * 
+ * @param[in] state Current A2DP connection state (CONNECTED / DISCONNECTED).
+ * @param[in] ptr Optional user data pointer (unused).
+ */
 void connectionStateChanged(esp_a2d_connection_state_t state, void *ptr)
 {
     switch (state)
@@ -237,6 +253,14 @@ void connectionStateChanged(esp_a2d_connection_state_t state, void *ptr)
     }
 }
 
+/**
+ * @brief Handles Bluetooth A2DP audio playback state changes (Started / Suspended).
+ * 
+ * Synchronizes esPod playback status state machine with Bluetooth audio stream state.
+ * 
+ * @param[in] state Current A2DP audio state (STARTED / REMOTE_SUSPEND).
+ * @param[in] ptr Optional user data pointer (unused).
+ */
 void audioStateChanged(esp_a2d_audio_state_t state, void *ptr)
 {
     switch (state)
@@ -252,29 +276,51 @@ void audioStateChanged(esp_a2d_audio_state_t state, void *ptr)
     }
 }
 
+/**
+ * @brief Handles AVRCP track play position updates from Bluetooth peer.
+ * 
+ * @param[in] play_pos Current playback position in milliseconds.
+ */
 void avrc_rn_play_pos_callback(uint32_t play_pos)
 {
     espod.updatePlayPosition(play_pos);
     ESP_LOGV(TAG, "Play position: %lu ms", play_pos);
 }
 
+/**
+ * @brief Handles incoming AVRCP track metadata attributes from Bluetooth peer.
+ * 
+ * Allocates a copy of the metadata text string and dispatches it to the processing queue.
+ * 
+ * @param[in] id AVRCP metadata attribute ID (Title, Artist, Album, Duration).
+ * @param[in] text Pointer to null-terminated metadata text string.
+ */
 void avrc_metadata_callback(uint8_t id, const uint8_t *text)
 {
     if (text == NULL) return;
     if ((id != ESP_AVRC_MD_ATTR_PLAYING_TIME) && (text[0] == '\0')) return;
 
+    // Allocate copy of metadata text payload for queue transfer
     avrcMetadata incMetadata;
     incMetadata.id = id;
     incMetadata.payload = (uint8_t *)strdup((const char *)text);
 
     if (incMetadata.payload == nullptr) return;
 
+    // Push item to AVRCP metadata processing queue; free memory if queue is full
     if (xQueueSend(avrcMetadataQueue, &incMetadata, 0) != pdTRUE)
     {
         free(incMetadata.payload);
     }
 }
 
+/**
+ * @brief Callback handler invoked by esPod when host sends iAP playback control commands.
+ * 
+ * Maps iAP playback commands (Play, Pause, Stop, Next, Prev) directly to Bluetooth A2DPSink methods.
+ * 
+ * @param[in] playCommand Target playback command enum value.
+ */
 void playStatusHandler(PB_COMMAND playCommand)
 {
     switch (playCommand)
@@ -310,33 +356,42 @@ void playStatusHandler(PB_COMMAND playCommand)
 
 #pragma region Main Entry Point
 
+/**
+ * @brief Main application entry point for superPod firmware.
+ * 
+ * Orchestrates dual-core initialization (Option B Swapped):
+ *   - Core 1: TinyUSB PL2303 driver, esPod handlers, and direct in-memory software bridge task.
+ *   - Core 0: AVRCP metadata task and Bluetooth A2DP Sink with AudioTools I2S output.
+ */
 extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "superPod firmware starting up on ESP32-S31...");
     ESP_LOGI(TAG, "Reset reason: %d", esp_reset_reason());
 
-    // Initialize TinyUSB PL2303 Device Driver on Core 1 (Option B Swapped)
+    // Step 1: Initialize TinyUSB PL2303 Device Driver on Core 1 (APP_CPU)
     ESP_ERROR_CHECK(pl2303_usb_init(CONFIG_TINYUSB_TASK_CORE));
 
-    // Attach playback controller and outbound USB TX callbacks to espod
+    // Step 2: Attach playback controller and outbound USB TX callbacks to espod
     espod.attachPlayControlHandler(playStatusHandler);
     espod.attachTxHandler(usb_tx_handler);
     espod.resetState();
 
-    // Start USB <-> espod bridge task on Core 1
+    // Step 3: Start USB <-> espod bridge task on Core 1 (APP_CPU)
     xTaskCreatePinnedToCore(usb_espod_bridge_task, "usb_espod_bridge", CONFIG_USB_ESPOD_BRIDGE_TASK_STACK_SIZE,
                             NULL, CONFIG_USB_ESPOD_BRIDGE_TASK_PRIORITY, NULL, CONFIG_TINYUSB_TASK_CORE);
 
-    // Initialize AVRCP task & Bluetooth A2DP Sink on Core 0 (Option B Swapped)
+    // Step 4: Initialize AVRCP task & Bluetooth A2DP Sink on Core 0 (PRO_CPU)
     if (initializeAVRCTask() != ESP_OK)
     {
         ESP_LOGE(TAG, "AVRC Task init failed");
         esp_restart();
     }
 
+    // Step 5: Start A2DP Sink audio streaming pipeline
     initializeA2DPSink();
 
     ESP_LOGI(TAG, "superPod initialization completed. Waiting for Bluetooth peer connection...");
 }
 
 #pragma endregion
+
