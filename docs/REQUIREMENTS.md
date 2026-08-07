@@ -14,9 +14,9 @@
   - USB Device event callbacks (`event_cb`).
 
 ## Component & Library Sourcing
-- **Dependency Management via YAML**: Only `esp_tinyusb` (`^2.0.0`) is sourced via the IDF Component Manager manifest (`idf_component.yml`). External Arduino C++ libraries (`ESP32-A2DP` and `arduino-audio-tools`) are completely removed from `idf_component.yml`.
-- **`bt_a2dp_sink` Component**: Native ESP-IDF A2DP Sink and I2S driver implementation contained in local IDF component `components/bt_a2dp_sink`.
+- **Dependency Management via YAML**: Managed component dependencies (`esp_tinyusb`, `pschatzmann/ESP32-A2DP`, and `pschatzmann/arduino-audio-tools`) are fetched via the IDF Component Manager manifest (`main/idf_component.yml`).
 - **`espod` Component**: Ported into `components/espod` as a hybrid Arduino library / ESP-IDF component.
+- **`pl2303_usb` Component**: Ported into `components/pl2303_usb` as a native TinyUSB PL2303 vendor emulation component.
 
 ## Coding Standards & Syntax Rules
 - **Syntax & Naming Preservation**: Reuse as much of the original syntax of the donor projects (`ipodesp32`, `espod`, `ESPL2303_stack`) as possible, including exact function names, class definitions, and variable names, to ensure transparent diffs and code readability.
@@ -35,9 +35,8 @@
   - USB <-> `espod` Direct In-Memory Software Bridge Task (Priority 10, Event-Driven Task Notifications)
   - `espod` RX, Process, TX, and Timer Tasks (Priority 2-5)
 
-## Audio Subsystem (`bt_a2dp_sink` Local Component)
-- **Native Implementation**: External Arduino audio dependencies (`ESP32-A2DP` and `arduino-audio-tools`) are completely removed and replaced by the local native ESP-IDF C++ component `components/bt_a2dp_sink`.
-- **I2S Audio Driver**: Native master TX I2S driver using `esp_driver_i2s` (`i2s_std` mode).
+## Audio Subsystem (`AudioTools` & `BluetoothA2DPSink`)
+- **Library Integration**: Bluetooth A2DP Sink (`BluetoothA2DPSink a2dp_sink`) paired with `AudioTools` I2S stream (`I2SStream i2s`).
 - **Audio Output**: Dedicated external DAC via standard I2S ONLY.
 - **Pin Configuration**: I2S signals (BCLK, WS, DOUT) configured dynamically via Kconfig (`CONFIG_I2S_BCLK_PIN`, etc.).
 - **Deprecated Features**: All references to AudioKit / ES8388 codec board configurations are strictly removed.
@@ -61,7 +60,7 @@
 | **ESP-IDF v6.x Execution** | [`../.geminirules`](../.geminirules) | `eim run "idf.py build"` enforced for virtual env | Verified |
 | **Strapping Pin Protection** | [`main/Kconfig.projbuild`](../main/Kconfig.projbuild) | I2S BCLK(27), WS(25), DOUT(26); DTR(5), RTS(6) - None overlap with GPIO 0,3,45,46 | Verified |
 | **Task Stack Floor (>=2048B)** | [`main/main.cpp`](../main/main.cpp) | `usb_espod_bridge_task` (4096B), `processAVRCTask` (4096B) | Verified |
-| **Native A2DP Sink & I2S** | [`components/bt_a2dp_sink`](../components/bt_a2dp_sink) | Native `esp_driver_i2s` and Bluedroid A2DP/AVRCP implementation | Verified |
+| **A2DP Sink & AudioTools** | [`main/idf_component.yml`](../main/idf_component.yml) | Sourced `pschatzmann/ESP32-A2DP` and `pschatzmann/arduino-audio-tools` manifests | Verified |
 | **USB PL2303 Emulation** | [`components/pl2303_usb`](../components/pl2303_usb) | TinyUSB Prolific PL2303 vendor device emulation with `tud_vendor_rx_cb` notification | Verified |
 | **iAP Lingo Engine** | [`components/espod`](../components/espod) | Direct raw iAP message processing via `processRawBuffer` & outbound transport callback `attachTxHandler` | Verified |
 

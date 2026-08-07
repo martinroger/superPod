@@ -1,6 +1,6 @@
 # superPod Theory of Operation (TOO), Use Cases & Event Sequences
 
-This document details the logical event sequences, FreeRTOS task interactions, error recovery mechanisms, communication timeout guards, and CPU priority race condition analysis for the unified **`superPod`** firmware running on the **ESP32-S31** with native local component `bt_a2dp_sink`.
+This document details the logical event sequences, FreeRTOS task interactions, error recovery mechanisms, communication timeout guards, and CPU priority race condition analysis for the unified **`superPod`** firmware running on the **ESP32-S31** with `AudioTools` & `BluetoothA2DPSink`.
 
 ---
 
@@ -11,8 +11,8 @@ This document details the logical event sequences, FreeRTOS task interactions, e
    - `pl2303_usb_init` configures native USB-OTG PL2303 hardware and starts TinyUSB task on **Core 1** (`CONFIG_TINYUSB_TASK_CORE`).
    - `espod` stack initialized on **Core 1** with state reset (`espod.disabled = true`).
    - Outbound USB transmit callback (`usb_tx_handler`) is attached to `espod.attachTxHandler()`.
-   - `usb_espod_bridge_task` launched on **Core 1** (`CONFIG_USB_ESPOD_BRIDGE_TASK_PRIORITY`, stack `CONFIG_USB_ESPOD_BRIDGE_TASK_STACK_SIZE`) and registers its task handle via `pl2303_usb_set_rx_task_handle()`.
-   - `initializeAVRCTask` and `initializeA2DPSink` initialize native Bluetooth Classic Bluedroid A2DP Sink (`bt_a2dp_sink_init`, `bt_a2dp_sink_start`) and I2S DAC driver (`i2s_audio_init` using `esp_driver_i2s` in `i2s_std` mode) on **Core 0** (`CONFIG_BT_BLUEDROID_PIN_TO_CORE`).
+   - `usb_espod_bridge_task` launched on **Core 1** (`CONFIG_USB_ESPOD_BRIDGE_TASK_PRIORITY`, stack 4096) and registers its task handle via `pl2303_usb_set_rx_task_handle()`.
+   - `initializeAVRCTask` and `initializeA2DPSink` initialize Bluetooth Classic Bluedroid A2DP Sink (`a2dp_sink.start`) and I2S DAC driver (`i2s.begin`) on **Core 0** (`CONFIG_BT_BLUEDROID_PIN_TO_CORE`).
 2. **Early USB Traffic Handling**:
    - If the USB Host (head unit / dock) is plugged in before a Bluetooth peer connects, iAP packets arrive over USB Bulk OUT (`CONFIG_EP_VENDOR_BULK_OUT` / `0x02`).
    - TinyUSB triggers callback `tud_vendor_rx_cb()`, which executes `xTaskNotifyGive()` to wake `usb_espod_bridge_task` instantly with zero delay.
@@ -184,4 +184,3 @@ The following table summarizes all hardware, protocol, and FreeRTOS queue timeou
 - [Project Trace & Implementation Matrix](docs/PROJECT_TRACE.md)
 - [esPod Component Documentation](components/espod/README.md)
 - [PL2303 USB Transceiver Documentation](components/pl2303_usb/README.md)
-- [BT A2DP Sink Component Documentation](components/bt_a2dp_sink/README.md)

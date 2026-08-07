@@ -25,9 +25,9 @@
    - Built single-MCU orchestrator in `main/main.cpp` preserving donor function names (`initializeA2DPSink`, `initializeAVRCTask`, `connectionStateChanged`, `audioStateChanged`, `avrc_rn_play_pos_callback`, `avrc_metadata_callback`, `playStatusHandler`).
    - Connected USB Bulk OUT endpoint directly to `espod.processRawBuffer()`.
    - Connected `espod` playback control handlers to `bt_a2dp_sink` player functions, and AVRCP metadata callbacks to `espod` state updates.
-6. **Milestone 5 — Native Local Component Rewrite (`no-audiotools` Branch)**:
-   - Completely eliminated external managed component dependencies `pschatzmann/ESP32-A2DP` and `pschatzmann/arduino-audio-tools`.
-   - Implemented local native IDF component `components/bt_a2dp_sink` with `i2s_audio` sub-module using `esp_driver_i2s`.
+6. **Milestone 5 — AudioTools & A2DP Managed Component Integration (`main` Branch)**:
+   - Sourced `pschatzmann/ESP32-A2DP` and `pschatzmann/arduino-audio-tools` dependencies via `main/idf_component.yml`.
+   - Integrated `BluetoothA2DPSink a2dp_sink` and `I2SStream i2s` in `main/main.cpp`.
 7. **Milestone 6 — Bidirectional USB Bridge & Event-Driven Notification Refactor**:
    - Added transport-agnostic `attachTxHandler(rawTxHandler_t txHandler)` callback to `esPod` so `_txTask` routes outbound response frames directly to `pl2303_usb_write_bytes()`.
    - Implemented `tud_vendor_rx_cb` TinyUSB Bulk OUT callback in `pl2303_usb` to notify `usb_espod_bridge_task` via FreeRTOS task notifications (`xTaskNotifyGive` / `ulTaskNotifyTake`), eliminating the 5ms polling loop (`vTaskDelay(5)`).
