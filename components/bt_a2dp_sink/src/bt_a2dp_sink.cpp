@@ -101,7 +101,20 @@ esp_err_t bt_a2dp_sink_init(const bt_a2dp_sink_config_t *config)
     // 6. Set GAP Device Name
     esp_bt_gap_set_device_name(s_device_name);
 
-    // 7. Register A2DP Sink Callbacks
+    // 7. Register & Initialize AVRCP Controller (callback must be registered before init)
+    ret = esp_avrc_ct_register_callback(bt_app_rc_ct_cb);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "esp_avrc_ct_register_callback failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ret = esp_avrc_ct_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "esp_avrc_ct_init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // 8. Initialize & Register A2DP Sink
     ret = esp_a2d_register_callback(bt_app_a2d_cb);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "esp_a2d_register_callback failed: %s", esp_err_to_name(ret));
@@ -117,19 +130,6 @@ esp_err_t bt_a2dp_sink_init(const bt_a2dp_sink_config_t *config)
     ret = esp_a2d_sink_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "esp_a2d_sink_init failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-
-    // 8. Register AVRCP Controller Callbacks
-    ret = esp_avrc_ct_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "esp_avrc_ct_init failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-
-    ret = esp_avrc_ct_register_callback(bt_app_rc_ct_cb);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "esp_avrc_ct_register_callback failed: %s", esp_err_to_name(ret));
         return ret;
     }
 
