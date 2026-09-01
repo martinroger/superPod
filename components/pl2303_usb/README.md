@@ -12,6 +12,7 @@ Native ESP-IDF component emulating a Prolific PL2303 (`0x067B:0x2303`) USB-to-UA
   - `0x81` (Interrupt IN): Status IRQ pipe (DCD, DSR, CTS, RI).
   - `0x02` (Bulk OUT): Inbound data pipeline from Host to ESP32.
   - `0x83` (Bulk IN): Outbound data pipeline from ESP32 to Host.
+- **Host-Adaptive Line Coding & Virtual Bridge**: Dynamically accepts and confirms host-requested baud rates and framing without secondary hardware UARTs or mandatory GPIO control pins.
 - **Event-Driven Task Notification**: Implements TinyUSB `tud_vendor_rx_cb()` to wake `usb_espod_bridge_task` instantly via FreeRTOS task notifications (`xTaskNotifyGive`), using zero idle CPU.
 
 ---

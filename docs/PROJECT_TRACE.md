@@ -84,3 +84,15 @@
   - Implemented `tud_vendor_rx_cb` task notification bridge in `pl2303_usb` and `main.cpp`.
   - Reorganized root documentation (`TOO.md` at root, `REQUIREMENTS.md` and `PROJECT_TRACE.md` moved to `docs/`).
   - Generated `README.md`, `docs/TOO.md`, and `docs/API.md` for all 3 components.
+
+### Entry 10: [PL2303 Virtualization, Line Coding Injection & Debug Logging Architecture]
+- **Date/Time**: 2026-09-01
+- **Branch**: `no-audiotools`
+- **Actions Taken**:
+  - Eliminated physical UART (`UART_NUM_1`) dependency from `pl2303_usb` component.
+  - Implemented in-memory host-adaptive line coding state machine (`pl2303_line_coding_t`) responding faithfully to host `SET_LINE` (0x20) and `GET_LINE` (0x21).
+  - Provided external configuration injection API (`pl2303_usb_set_line_coding`, `pl2303_usb_get_line_coding`, `pl2303_usb_set_line_coding_callback`, `pl2303_usb_get_control_lines`).
+  - Virtualized DTR and RTS control lines with `CONFIG_DTR_PIN` and `CONFIG_RTS_PIN` defaulting to `-1` (disabled).
+  - Enforced `disabled` state protection in `esPod` tasks and drained queues on `resetState()`.
+  - Fixed iAP checksum calculation in `esPod::_checksum()` to include the packet length byte.
+  - Enabled compile-time Debug logging (`CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y`) with runtime default at `WARN` (`CONFIG_LOG_DEFAULT_LEVEL_WARN=y`), centrally configuring `PL2303_USB`, `esPod`, and `SUPERPOD_MAIN` to `ESP_LOG_DEBUG` in `main.cpp`.

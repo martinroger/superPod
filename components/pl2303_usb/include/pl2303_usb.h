@@ -33,10 +33,62 @@ extern "C" {
 
 /**
  * @brief Initializes DTR and RTS control GPIO pins.
+ * @brief Prolific PL2303 / CDC UART line coding configuration.
+ */
+typedef struct {
+    uint32_t baud_rate;  ///< Baud rate in bps (e.g. 19200, 57600, 115200)
+    uint8_t stop_bits;  ///< Stop bits: 0 = 1 stop bit, 1 = 1.5 stop bits, 2 = 2 stop bits
+    uint8_t parity;     ///< Parity: 0 = None, 1 = Odd, 2 = Even, 3 = Mark, 4 = Space
+    uint8_t data_bits;  ///< Data bits: 5, 6, 7, 8, 16
+} pl2303_line_coding_t;
+
+/**
+ * @brief Callback function type invoked when USB Host issues a SET_LINE request.
+ * 
+ * @param[in] coding Pointer to the applied line coding configuration.
+ */
+typedef void (*pl2303_line_coding_cb_t)(const pl2303_line_coding_t *coding);
+
+/**
+ * @brief Initializes optional DTR and RTS control GPIO pins.
+ * 
+ * If CONFIG_DTR_PIN < 0 and CONFIG_RTS_PIN < 0, physical GPIO setup is skipped
+ * and control lines operate in pure virtual mode in RAM.
  * 
  * @return esp_err_t ESP_OK on success, or error code on failure.
  */
 esp_err_t init_bridge_control_pins(void);
+
+/**
+ * @brief Injects or sets virtual UART line coding parameters.
+ * 
+ * @param[in] coding Pointer to line coding parameters to apply.
+ * @return esp_err_t ESP_OK on success, or ESP_ERR_INVALID_ARG if coding is NULL.
+ */
+esp_err_t pl2303_usb_set_line_coding(const pl2303_line_coding_t *coding);
+
+/**
+ * @brief Retrieves current virtual UART line coding parameters.
+ * 
+ * @param[out] coding Pointer to structure where current line coding will be copied.
+ * @return esp_err_t ESP_OK on success, or ESP_ERR_INVALID_ARG if coding is NULL.
+ */
+esp_err_t pl2303_usb_get_line_coding(pl2303_line_coding_t *coding);
+
+/**
+ * @brief Registers a callback to be notified when USB Host updates line coding via SET_LINE.
+ * 
+ * @param[in] cb Callback function pointer, or NULL to disable.
+ */
+void pl2303_usb_set_line_coding_callback(pl2303_line_coding_cb_t cb);
+
+/**
+ * @brief Retrieves current virtual control line state (DTR / RTS) set by USB host.
+ * 
+ * @param[out] dtr Pointer to receive DTR state (may be NULL if not needed).
+ * @param[out] rts Pointer to receive RTS state (may be NULL if not needed).
+ */
+void pl2303_usb_get_control_lines(bool *dtr, bool *rts);
 
 /**
  * @brief Sends Prolific PL2303 line status byte to host via Interrupt Endpoint.

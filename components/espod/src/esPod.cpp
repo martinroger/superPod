@@ -114,7 +114,25 @@ void esPod::resetState()
     playPosition = 0;
     currentTrackIndex = 0;
     trackListPosition = 0;
-    disabled = false;
+
+    // Flush any pending TX queue items and return buffers to free pool
+    aapCommand tempCmd;
+    while (_txQueue && xQueueReceive(_txQueue, &tempCmd, 0) == pdTRUE)
+    {
+        if (tempCmd.payload != nullptr)
+        {
+            uint8_t *bufPtr = tempCmd.payload;
+            xQueueSend(_txFreeBufferQueue, &bufPtr, 0);
+        }
+    }
+
+    // Flush any pending timer callback messages
+    TimerCallbackMessage tempTimerMsg;
+    while (_timerQueue && xQueueReceive(_timerQueue, &tempTimerMsg, 0) == pdTRUE)
+    {
+        // Discard pending timer message
+    }
+
     ESP_LOGI(TAG, "State reset clean");
 }
 
@@ -148,6 +166,7 @@ size_t esPod::processRawBuffer(const uint8_t *data, size_t len)
         ESP_LOGW(TAG, "cmdRingBuffer full, dropping %d raw bytes", (int)len);
         return 0;
     }
+    ESP_LOGD(TAG, "processRawBuffer: queued %u bytes into ringbuffer", (unsigned int)len);
     return len;
 }
 
@@ -360,8 +379,15 @@ void esPod::_processTask(void *pvParameters)
         uint8_t *item = (uint8_t *)xRingbufferReceive(esp->_cmdRingBuffer, &itemSize, portMAX_DELAY);
         if (item != NULL && itemSize > 0)
         {
-            // Parse frame header, verify checksum, and dispatch to target Lingo handler
-            esp->_processPacket(item, itemSize);
+            // Only parse frame and dispatch to Lingo handlers if esPod is enabled
+            if (!esp->disabled)
+            {
+                esp->_processPacket(item, itemSize);
+            }
+            else
+            {
+                ESP_LOGD(TAG, "_processTask: ignoring %u bytes because esPod is disabled", (unsigned int)itemSize);
+            }
 
             // Return item back to ringbuffer storage pool
             vRingbufferReturnItem(esp->_cmdRingBuffer, (void *)item);
@@ -381,15 +407,23 @@ void esPod::_txTask(void *pvParameters)
         {
             if (txCmd.payload != nullptr && txCmd.length > 0)
             {
-                // Route outbound frame: priority to attached custom transport callback (e.g. TinyUSB PL2303)
-                if (esp->_rawTxHandler != nullptr)
+                // Only transmit outbound frame if esPod is active and enabled
+                if (!esp->disabled)
                 {
-                    esp->_rawTxHandler(txCmd.payload, txCmd.length);
+                    // Route outbound frame: priority to attached custom transport callback (e.g. TinyUSB PL2303)
+                    if (esp->_rawTxHandler != nullptr)
+                    {
+                        esp->_rawTxHandler(txCmd.payload, txCmd.length);
+                    }
+                    else if (esp->_rxPin >= 0 && esp->_txPin >= 0 && uart_is_driver_installed(esp->_uartPort))
+                    {
+                        // Fallback to physical hardware UART pins if assigned
+                        uart_write_bytes(esp->_uartPort, (const char *)txCmd.payload, txCmd.length);
+                    }
                 }
-                else if (esp->_rxPin >= 0 && esp->_txPin >= 0 && uart_is_driver_installed(esp->_uartPort))
+                else
                 {
-                    // Fallback to physical hardware UART pins if assigned
-                    uart_write_bytes(esp->_uartPort, (const char *)txCmd.payload, txCmd.length);
+                    ESP_LOGD(TAG, "_txTask: dropping outbound frame (%u bytes) because esPod is disabled", (unsigned int)txCmd.length);
                 }
 
                 // Recast and return payload buffer pointer to static free buffer pool
@@ -410,18 +444,21 @@ void esPod::_timerTask(void *pvParameters)
         // Block waiting for software timer callback messages (delayed ACKs)
         if (xQueueReceive(esp->_timerQueue, &msg, portMAX_DELAY) == pdTRUE)
         {
-            // Dispatch delayed iPod ACK response to corresponding Lingo protocol handler
-            switch (msg.targetLingo)
+            // Only dispatch delayed iPod ACK responses if esPod is enabled
+            if (!esp->disabled)
             {
-            case 0x00:
-                L0x00::_0x02_iPodAck(esp, iPodAck_OK, msg.cmdID);
-                break;
-            case 0x03:
-                L0x03::_0x00_iPodAck(esp, iPodAck_OK, msg.cmdID);
-                break;
-            case 0x04:
-                L0x04::_0x01_iPodAck(esp, iPodAck_OK, msg.cmdID);
-                break;
+                switch (msg.targetLingo)
+                {
+                case 0x00:
+                    L0x00::_0x02_iPodAck(esp, iPodAck_OK, msg.cmdID);
+                    break;
+                case 0x03:
+                    L0x03::_0x00_iPodAck(esp, iPodAck_OK, msg.cmdID);
+                    break;
+                case 0x04:
+                    L0x04::_0x01_iPodAck(esp, iPodAck_OK, msg.cmdID);
+                    break;
+                }
             }
         }
     }
@@ -454,12 +491,13 @@ void esPod::_pendingTimerCallback_0x04(TimerHandle_t xTimer)
 
 uint8_t esPod::_checksum(const uint8_t *byteArray, uint32_t len)
 {
-    uint8_t sum = 0;
+    uint32_t tempChecksum = len;
     for (uint32_t i = 0; i < len; i++)
     {
-        sum += byteArray[i];
+        tempChecksum += byteArray[i];
     }
-    return (uint8_t)(0x100 - sum);
+    tempChecksum = 0x100 - (tempChecksum & 0xFF);
+    return (uint8_t)tempChecksum;
 }
 
 void esPod::_sendPacket(const uint8_t *byteArray, uint32_t len)
@@ -479,6 +517,7 @@ void esPod::_queuePacket(const uint8_t *byteArray, uint32_t len)
         bufPtr[3 + len] = _checksum(byteArray, len);
 
         aapCommand cmd = {bufPtr, 3 + len + 1};
+        ESP_LOGD(TAG, "TX Packet queued: %u bytes (payload %lu bytes)", (unsigned int)(3 + len + 1), (unsigned long)len);
         xQueueSend(_txQueue, &cmd, 0);
     }
 }
@@ -495,6 +534,7 @@ void esPod::_queuePacketToFront(const uint8_t *byteArray, uint32_t len)
         bufPtr[3 + len] = _checksum(byteArray, len);
 
         aapCommand cmd = {bufPtr, 3 + len + 1};
+        ESP_LOGD(TAG, "TX Packet queued to front: %u bytes (payload %lu bytes)", (unsigned int)(3 + len + 1), (unsigned long)len);
         xQueueSendToFront(_txQueue, &cmd, 0);
     }
 }
@@ -522,6 +562,8 @@ void esPod::_processPacket(const uint8_t *byteArray, size_t len)
     uint8_t lingoID = lingoPtr[0];
     const uint8_t *cmdData = &lingoPtr[1];
     uint32_t cmdLen = payloadLen - 1;
+
+    ESP_LOGD(TAG, "RX iAP Packet: Lingo=0x%02x, cmdLen=%lu, totalLen=%u", lingoID, (unsigned long)cmdLen, (unsigned int)len);
 
     // Route command payload to target Lingo state machine handler
     switch (lingoID)

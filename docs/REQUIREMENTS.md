@@ -59,10 +59,12 @@
 | :--- | :--- | :--- | :--- |
 | **ESP32-S3 Target Verification** | [`sdkconfig.defaults`](../sdkconfig.defaults) | `CONFIG_IDF_TARGET="esp32s31"` | Verified |
 | **ESP-IDF v6.x Execution** | [`../.geminirules`](../.geminirules) | `eim run "idf.py build"` enforced for virtual env | Verified |
-| **Strapping Pin Protection** | [`main/Kconfig.projbuild`](../main/Kconfig.projbuild) | I2S BCLK(27), WS(25), DOUT(26); DTR(5), RTS(6) - None overlap with GPIO 0,3,45,46 | Verified |
+| **Strapping Pin Protection** | [`main/Kconfig.projbuild`](../main/Kconfig.projbuild) | I2S BCLK(45), WS(46), DOUT(47); DTR(-1), RTS(-1) - Zero GPIO conflict | Verified |
 | **Task Stack Floor (>=2048B)** | [`main/main.cpp`](../main/main.cpp) | `usb_espod_bridge_task` (4096B), `processAVRCTask` (4096B) | Verified |
 | **Native A2DP Sink & I2S** | [`components/bt_a2dp_sink`](../components/bt_a2dp_sink) | Native `esp_driver_i2s` and Bluedroid A2DP/AVRCP implementation | Verified |
 | **USB PL2303 Emulation** | [`components/pl2303_usb`](../components/pl2303_usb) | TinyUSB Prolific PL2303 vendor device emulation with `tud_vendor_rx_cb` notification | Verified |
+| **Host-Adaptive Line Coding** | [`components/pl2303_usb`](../components/pl2303_usb) | In-memory `pl2303_line_coding_t` accepting any host baud/framing with injection API | Verified |
+| **Centralized Debug Logging** | [`main/main.cpp`](../main/main.cpp), [`sdkconfig.defaults`](../sdkconfig.defaults) | `CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y`, runtime level set centrally in `app_main` | Verified |
 | **iAP Lingo Engine** | [`components/espod`](../components/espod) | Direct raw iAP message processing via `processRawBuffer` & outbound transport callback `attachTxHandler` | Verified |
 
 ## Documentation & Traceability
