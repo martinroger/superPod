@@ -60,12 +60,22 @@ menu "superPod Core Configuration"
             default 0x81
 
         config DTR_PIN
-            int "DTR pin to control resets"
-            default 5
+            int "DTR pin to control resets (-1 for virtual mode)"
+            default -1
+            help
+                GPIO pin for DTR signal. Set to -1 to disable physical pin allocation and operate in pure virtual mode.
 
         config RTS_PIN
-            int "RTS pin to control resets"
-            default 6
+            int "RTS pin to control resets (-1 for virtual mode)"
+            default -1
+            help
+                GPIO pin for RTS signal. Set to -1 to disable physical pin allocation and operate in pure virtual mode.
+
+        config PL2303_DEFAULT_BAUDRATE
+            int "Default virtual baud rate"
+            default 19200
+            help
+                Initial virtual baud rate reported to USB host prior to host SET_LINE requests.
     endmenu
 
 endmenu

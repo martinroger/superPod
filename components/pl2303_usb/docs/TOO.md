@@ -17,6 +17,11 @@ graph LR
 ### 1. Vendor Control Requests (`tud_vendor_control_xfer_cb`)
 - Handles Prolific vendor-specific control transfers (bRequest `0x01` setup reads/writes, `0x20` SET_LINE, `0x21` GET_LINE, `0x22` SET_CONTROL).
 - Drives DTR and RTS signal levels via GPIO bitbanging (`CONFIG_DTR_PIN`, `CONFIG_RTS_PIN`).
+### 1. Vendor Control Requests & Virtual Line Coding (`tud_vendor_control_xfer_cb`)
+- Handles Prolific vendor-specific control transfers (bRequest `0x01` setup reads/writes, `0x20` SET_LINE, `0x21` GET_LINE, `0x22` SET_CONTROL, `0x23` BREAK).
+- **Host-Adaptive Line Coding**: When the host sends `SET_LINE` (`0x20`), baud rate and framing parameters are parsed and stored directly in an in-memory `pl2303_line_coding_t` structure. When queried via `GET_LINE` (`0x21`), these values are reported back, ensuring the host serial driver confirms configuration immediately without requiring any physical secondary UART.
+- **External Configuration Injection**: Supports programmatic line configuration injection via `pl2303_usb_set_line_coding()` and host update monitoring via `pl2303_usb_set_line_coding_callback()`.
+- **Pure Virtual Control Lines**: DTR and RTS states are tracked in software (`s_dtr_state`, `s_rts_state`). If `CONFIG_DTR_PIN` and `CONFIG_RTS_PIN` are configured to `-1`, physical GPIO setup is skipped entirely.
 
 ### 2. Event-Driven USB Bulk OUT Ingestion
 - When USB Host writes data to Bulk OUT endpoint (`0x02`), TinyUSB invokes callback `tud_vendor_rx_cb(idx, buffer, bufsize)`.

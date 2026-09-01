@@ -330,13 +330,24 @@ void playStatusHandler(PB_COMMAND playCommand)
 
 extern "C" void app_main(void)
 {
+    // Step 0: Centrally configure subsystem log verbosity
+    esp_log_level_set("PL2303_USB", ESP_LOG_DEBUG);
+    esp_log_level_set("esPod", ESP_LOG_DEBUG);
+    esp_log_level_set(TAG, ESP_LOG_DEBUG);
+
     ESP_LOGI(TAG, "superPod firmware starting up on ESP32-S31...");
     ESP_LOGI(TAG, "Reset reason: %d", esp_reset_reason());
 
     // Initialize TinyUSB PL2303 Device Driver on Core 1 (Option B Swapped)
     ESP_ERROR_CHECK(pl2303_usb_init(CONFIG_TINYUSB_TASK_CORE));
 
-    // Attach playback controller and outbound USB TX callbacks to espod
+    // Register line coding callback to observe host UART parameter setup
+    pl2303_usb_set_line_coding_callback([](const pl2303_line_coding_t *coding) {
+        ESP_LOGI(TAG, "Host applied line coding: %lu baud, %u stop, %u parity, %u bits",
+                 (unsigned long)coding->baud_rate, coding->stop_bits, coding->parity, coding->data_bits);
+    });
+
+    // Step 2: Attach playback controller and outbound USB TX callbacks to espod
     espod.attachPlayControlHandler(playStatusHandler);
     espod.attachTxHandler(usb_tx_handler);
     espod.resetState();

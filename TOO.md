@@ -9,6 +9,8 @@ This document details the logical event sequences, FreeRTOS task interactions, e
 ### Operational Flow
 1. **System Power-On & Initialization (`app_main`)**:
    - `pl2303_usb_init` configures native USB-OTG PL2303 hardware and starts TinyUSB task on **Core 1** (`CONFIG_TINYUSB_TASK_CORE`).
+   - Centralized log verbosity configured for `PL2303_USB`, `esPod`, and `SUPERPOD_MAIN` (`ESP_LOG_DEBUG`).
+   - `pl2303_usb_init` configures native USB-OTG PL2303 hardware with host-adaptive virtual line coding, pure virtual control lines (`CONFIG_DTR_PIN = -1`, `CONFIG_RTS_PIN = -1`), and starts TinyUSB task on **Core 1** (`CONFIG_TINYUSB_TASK_CORE`).
    - `espod` stack initialized on **Core 1** with state reset (`espod.disabled = true`).
    - Outbound USB transmit callback (`usb_tx_handler`) is attached to `espod.attachTxHandler()`.
    - `usb_espod_bridge_task` launched on **Core 1** (`CONFIG_USB_ESPOD_BRIDGE_TASK_PRIORITY`, stack `CONFIG_USB_ESPOD_BRIDGE_TASK_STACK_SIZE`) and registers its task handle via `pl2303_usb_set_rx_task_handle()`.
