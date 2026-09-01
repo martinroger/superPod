@@ -351,6 +351,7 @@ extern "C" void app_main(void)
     espod.attachPlayControlHandler(playStatusHandler);
     espod.attachTxHandler(usb_tx_handler);
     espod.resetState();
+    espod.disabled = true;
 
     // Start USB <-> espod bridge task on Core 1
     xTaskCreatePinnedToCore(usb_espod_bridge_task, "usb_espod_bridge", 4096, NULL, 10, NULL, CONFIG_TINYUSB_TASK_CORE);
