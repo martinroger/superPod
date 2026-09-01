@@ -51,7 +51,7 @@ static const char *TAG = "PL2303_USB";
 tusb_desc_device_t const desc_device = {
     .bLength = sizeof(tusb_desc_device_t),
     .bDescriptorType = TUSB_DESC_DEVICE,
-    .bcdUSB = 0x0110,
+    .bcdUSB = 0x0200,
     .bDeviceClass = 0x00,
     .bDeviceSubClass = 0x00,
     .bDeviceProtocol = 0x00,
@@ -65,7 +65,20 @@ tusb_desc_device_t const desc_device = {
     .bNumConfigurations = 0x01
 };
 
-/// @brief Prolific PL2303 Configuration Descriptor
+/// @brief Device Qualifier Descriptor (required for High-Speed capable USB devices)
+static const tusb_desc_device_qualifier_t desc_qualifier = {
+    .bLength            = sizeof(tusb_desc_device_qualifier_t),
+    .bDescriptorType    = TUSB_DESC_DEVICE_QUALIFIER,
+    .bcdUSB             = 0x0200,
+    .bDeviceClass       = 0x00,
+    .bDeviceSubClass    = 0x00,
+    .bDeviceProtocol    = 0x00,
+    .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
+    .bNumConfigurations = 0x01,
+    .bReserved          = 0x00
+};
+
+/// @brief Prolific PL2303 Full-Speed Configuration Descriptor
 uint8_t const desc_configuration[] = {
     // Config number, interface count, string index, total length, attribute, power in mA
     TUD_CONFIG_DESCRIPTOR(1, 1, 0, (9 + 9 + 7 + 7 + 7), 0x00, 100),
@@ -81,6 +94,24 @@ uint8_t const desc_configuration[] = {
 
     // Endpoint In (Bulk EP 0x83)
     7, TUSB_DESC_ENDPOINT, CONFIG_EP_VENDOR_BULK_IN, TUSB_XFER_BULK, U16_TO_U8S_LE(64), 0
+};
+
+/// @brief Prolific PL2303 High-Speed Configuration Descriptor
+uint8_t const desc_hs_configuration[] = {
+    // Config number, interface count, string index, total length, attribute, power in mA
+    TUD_CONFIG_DESCRIPTOR(1, 1, 0, (9 + 9 + 7 + 7 + 7), 0x00, 100),
+
+    // Vendor Interface Descriptor
+    9, TUSB_DESC_INTERFACE, 0x00, 0x00, 0x03, 0xFF, 0x00, 0x00, 0x00,
+
+    // Endpoint Interrupt In (Status EP 0x81)
+    7, TUSB_DESC_ENDPOINT, CONFIG_EP_VENDOR_IRQ, TUSB_XFER_INTERRUPT, U16_TO_U8S_LE(10), 0x01,
+
+    // Endpoint Out (Bulk EP 0x02, 512 bytes for High-Speed)
+    7, TUSB_DESC_ENDPOINT, CONFIG_EP_VENDOR_BULK_OUT, TUSB_XFER_BULK, U16_TO_U8S_LE(512), 0,
+
+    // Endpoint In (Bulk EP 0x83, 512 bytes for High-Speed)
+    7, TUSB_DESC_ENDPOINT, CONFIG_EP_VENDOR_BULK_IN, TUSB_XFER_BULK, U16_TO_U8S_LE(512), 0
 };
 
 /// @brief String Descriptors Array
@@ -297,9 +328,11 @@ esp_err_t pl2303_usb_init(int task_core)
     tusb_cfg.task.xCoreID = task_core;
 
     tusb_cfg.descriptor.device = &desc_device;
+    tusb_cfg.descriptor.qualifier = &desc_qualifier;
     tusb_cfg.descriptor.string = string_desc_arr;
     tusb_cfg.descriptor.string_count = 5;
     tusb_cfg.descriptor.full_speed_config = desc_configuration;
+    tusb_cfg.descriptor.high_speed_config = desc_hs_configuration;
 
     esp_err_t ret = tinyusb_driver_install(&tusb_cfg);
     if (ret != ESP_OK)
