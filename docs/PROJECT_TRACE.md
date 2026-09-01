@@ -95,3 +95,9 @@
   - Virtualized DTR and RTS control lines with `CONFIG_DTR_PIN` and `CONFIG_RTS_PIN` defaulting to `-1` (disabled).
   - Enabled compile-time Debug logging (`CONFIG_LOG_MAXIMUM_LEVEL=4`) with system default at `INFO` (`CONFIG_LOG_DEFAULT_LEVEL=3`), and centrally configured `PL2303_USB`, `esPod`, and `SUPERPOD_MAIN` to `ESP_LOG_DEBUG` in `main.cpp`.
 
+### Entry 11: [BLE Audio Migration Feasibility & Functional Requirements Specification]
+- **Date/Time**: 2026-09-01
+- **User Directives**: Conduct feasibility analysis for migrating from Classic BT (A2DP/AVRCP) to BLE Audio (BAP/MCP/MCS) on ESP32-S31, clarify software vs hardware codec implications (LC3), perform in-depth code review of pairing, metadata hooks, and timing behaviors, and document an implementation-agnostic requirements specification.
+- **Actions Taken**:
+  - Performed comprehensive code review of pairing security (No-PIN / "Just Works" / SSP), auto-reconnect, auto-play on connect, metadata hooks, track-change ACK gate (`trackChangeAckPending`), and 1-second play position notifications.
+  - Created [`docs/FUNCTIONAL_REQUIREMENTS_BLE_AUDIO.md`](FUNCTIONAL_REQUIREMENTS_BLE_AUDIO.md) establishing the 6 requirement domains and verification criteria matrix.
