@@ -184,7 +184,7 @@ void initializeA2DPSink()
 
     // Bind AudioTools I2S stream to BluetoothA2DPSink
     a2dp_sink.set_output(i2s);
-    a2dp_sink.set_auto_reconnect(true, 10000);
+    // a2dp_sink.set_auto_reconnect(true, 10000);
     a2dp_sink.set_on_connection_state_changed(connectionStateChanged);
     a2dp_sink.set_on_audio_state_changed(audioStateChanged);
     a2dp_sink.set_avrc_metadata_callback(avrc_metadata_callback);
@@ -195,6 +195,8 @@ void initializeA2DPSink()
     // Start Bluetooth A2DP Sink service with configured device name
     a2dp_sink.start(CONFIG_A2DP_SINK_NAME);
     ESP_LOGI(TAG, "A2DP Sink started: %s", CONFIG_A2DP_SINK_NAME);
+        a2dp_sink.set_auto_reconnect(true, 10000);
+
 }
 
 /**
