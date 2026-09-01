@@ -2,6 +2,9 @@
 
 This document provides a comprehensive, implementation-agnostic specification of all functional and behavioral requirements for the `superPod` wireless audio and media control subsystem. It serves as the baseline and verification criteria for migrating from Classic Bluetooth (A2DP / AVRCP) to BLE Audio (BAP / MCP / MCS).
 
+> [!IMPORTANT]
+> **Target Toolchain Baseline**: **ESP-IDF v6.1** (with modular component sourcing via IDF Component Manager).
+
 ---
 
 ## 1. System Architecture Overview
@@ -20,6 +23,7 @@ This document provides a comprehensive, implementation-agnostic specification of
 │  [REQ-SEC]   Security & Pairing       : "Just Works", No PIN, Auto-Confirm, Bond Storage              │
 │  [REQ-CONN]  Connection Lifecycle     : Configurable Name, 10s Auto-Reconnect, Auto-Play on Connect  │
 │  [REQ-AUD]   Audio Streaming & I2S    : Uncompressed PCM 44.1/48kHz, Glitch-Free DMA, Loopback Inh.  │
+│  [REQ-FLOW]  I2S Flow Management      : Clock Adaptation, Mono-to-Stereo, Backpressure, Anti-Pop     │
 │  [REQ-CTRL]  Playback Control Bridge  : Bi-directional Commands, Pending Track-Change ACK Gate       │
 │  [REQ-META]  Track Metadata Ingestion : Title/Artist/Album/Duration parsing, 1s Play Position Cadence│
 │  [REQ-SYS]   Task & Core Affinities   : Core 0 Isolation, Non-blocking Asynchronous Queues           │
@@ -69,7 +73,19 @@ This document provides a comprehensive, implementation-agnostic specification of
 
 ---
 
-### Section 4: Bi-directional Playback Control Bridge (`REQ-CTRL`)
+### Section 4: I2S Flow Management & Stream Control (`REQ-FLOW`)
+
+| ID | Requirement Name | Description & Behavioral Rule |
+| :--- | :--- | :--- |
+| **REQ-FLOW-1** | **Dynamic Sample Rate Clock Adaptation** | When track transitions introduce a change in sampling frequency (e.g. from 44.1 kHz to 48.0 kHz), the I2S subsystem must reconfigure peripheral clock dividers on the fly without tearing down DMA channels or causing audio dropouts. |
+| **REQ-FLOW-2** | **Channel Format Expansion (Mono $\to$ Stereo)** | If an incoming audio stream or codec packet contains only 1 channel (mono), the pipeline must automatically duplicate the mono samples to both Left and Right channels ($L = R$), preserving standard I2S dual-channel frame timing. |
+| **REQ-FLOW-3** | **Flow Control & Decoder Backpressure** | Writing decoded PCM samples to the I2S driver must use blocking write semantics with configurable FreeRTOS tick timeouts (`ticks_to_wait_write` / `portMAX_DELAY`). This blocks the audio decoder task when the DMA ringbuffer is full, establishing natural backpressure synchronized with the DAC consumption rate. |
+| **REQ-FLOW-4** | **Anti-Pop Sequencing & Silence Insertion** | During stream pauses, stops, underruns, or clock reconfiguration, the pipeline must flush or insert zero-valued PCM samples (soft silence) to prevent DC offset pops or clicks on the external DAC. |
+| **REQ-FLOW-5** | **Hardware Mute GPIO Control (Optional)** | If an external DAC mute pin is designated, the I2S driver must assert mute prior to clock shutdown/reconfiguration and deassert mute only after clock signals and DMA descriptors have stabilized. |
+
+---
+
+### Section 5: Bi-directional Playback Control Bridge (`REQ-CTRL`)
 
 | ID | Requirement Name | Description & Behavioral Rule |
 | :--- | :--- | :--- |
@@ -79,7 +95,7 @@ This document provides a comprehensive, implementation-agnostic specification of
 
 ---
 
-### Section 5: Track Metadata & Position Synchronization (`REQ-META`)
+### Section 6: Track Metadata & Position Synchronization (`REQ-META`)
 
 | ID | Requirement Name | Description & Behavioral Rule |
 | :--- | :--- | :--- |
@@ -91,7 +107,7 @@ This document provides a comprehensive, implementation-agnostic specification of
 
 ---
 
-### Section 6: System Concurrency & Fault Tolerance (`REQ-SYS`)
+### Section 7: System Concurrency & Fault Tolerance (`REQ-SYS`)
 
 | ID | Requirement Name | Description & Behavioral Rule |
 | :--- | :--- | :--- |
@@ -101,17 +117,57 @@ This document provides a comprehensive, implementation-agnostic specification of
 
 ---
 
-## 3. Implementation Mapping: A2DP/AVRCP vs. BLE Audio
+## 3. I2S Flow Management: AudioTools Capabilities vs. Native ESP-IDF v6.1 Implementation
 
-This mapping table defines how each functional requirement is fulfilled in the current Classic BT stack and how it translates to BLE Audio:
+The `pschatzmann/arduino-audio-tools` library provides several flow management conveniences under its `I2SStream` and `I2SDriverESP32` classes. When evaluating whether to retain `AudioTools` or use native ESP-IDF v6.1 drivers, each capability must be clearly understood:
 
-| Requirement Area | Classic Bluetooth (Current Stack) | BLE Audio / LE Audio (Target Stack) |
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                           AudioTools I2S Flow Management Services                               │
+├────────────────────────────────┬────────────────────────────────┬──────────────────────────────┤
+│ AudioTools Feature             │ Underlying Mechanism in Lib    │ Equivalent in Native IDF v6.1│
+├────────────────────────────────┼────────────────────────────────┼──────────────────────────────┤
+│ 1. Dynamic Sample Rate Change  │ `setAudioInfo()` re-executes   │ `i2s_channel_reconfig_std_   │
+│                                │ `i2s_set_sample_rates()`       │  clock(tx_handle, &clk_cfg)` │
+├────────────────────────────────┼────────────────────────────────┼──────────────────────────────┤
+│ 2. Mono-to-Stereo Duplication  │ `writeExpandChannel()` unpacks │ Configure LC3 decoder for    │
+│                                │ single channel to 2 channels   │ stereo output or interleave  │
+├────────────────────────────────┼────────────────────────────────┼──────────────────────────────┤
+│ 3. Decoder Backpressure        │ `ticks_to_wait_write` in       │ `i2s_channel_write()` with   │
+│                                │ `i2s_write()` blocks producer  │ `portMAX_DELAY` / timeout    │
+├────────────────────────────────┼────────────────────────────────┼──────────────────────────────┤
+│ 4. Hardware Mute Pin Control   │ `mute(true)` toggles GPIO      │ `gpio_set_level(MUTE_PIN)`   │
+│                                │ before/after clock transitions │ in stream start/stop logic   │
+├────────────────────────────────┼────────────────────────────────┼──────────────────────────────┤
+│ 5. Bit-Depth Adaptations       │ Classes `ChannelReducerT`      │ `i2s_channel_init_std_mode()`│
+│                                │ handle int16, int24, int32     │ native slot bit configuration│
+├────────────────────────────────┼────────────────────────────────┼──────────────────────────────┤
+│ 6. Buffer Capacity Modeling    │ `availableForWrite()` returns  │ Monitored via DMA descriptor │
+│                                │ `BUFFER_COUNT * BUFFER_SIZE`   │ size & event callback hooks  │
+└────────────────────────────────┴────────────────────────────────┴──────────────────────────────┘
+```
+
+### Key Trade-Off Analysis
+* **Why AudioTools was convenient**: It bundled `AudioInfo` change detection, mono duplication, and write timeouts into a single C++ `Stream` abstraction.
+* **Why Native ESP-IDF v6.1 is preferable**:
+  1. `AudioTools` has **no integration with BLE Audio / BAP**; audio frames must still be received, parsed, and decoded outside `AudioTools`.
+  2. The native ESP-IDF v6.1 `esp_driver_i2s` driver natively supports dynamic clock reconfiguration (`i2s_channel_reconfig_std_clock`), DMA queue timeouts (`i2s_channel_write`), and DMA event callbacks without requiring Arduino compatibility headers (`audio_tools_compat.h`).
+  3. All 6 flow management requirements are fully satisfied by ~80 lines of native C++ code (as demonstrated in `components/bt_a2dp_sink/src/i2s_audio.cpp`), with zero template overhead.
+
+---
+
+## 4. Implementation Mapping: A2DP/AVRCP vs. BLE Audio
+
+This mapping table defines how each functional requirement is fulfilled in the current Classic BT stack and how it translates to BLE Audio under **ESP-IDF v6.1**:
+
+| Requirement Area | Classic Bluetooth (Current Stack) | BLE Audio / LE Audio (Target Stack on IDF v6.1) |
 | :--- | :--- | :--- |
 | **No-PIN Pairing** | Classic SSP `ESP_BT_IO_CAP_NONE`, PIN fixed 0 | BLE SMP `ESP_BLE_IO_CAP_NONE`, "Just Works" |
 | **Auto-Reconnect** | `BluetoothA2DPCommon::reconnect()` + NVS BDA blob | BLE GAP Directed Advertising / `esp_ble_gap_connect` |
 | **Connect Lifecycle** | `ESP_A2D_CONNECTION_STATE_CONNECTED` callback | BLE ACL / CIS `ESP_BLE_AUDIO_GAP_EVENT_ACL_CONNECT` |
 | **Audio Stream Sink** | A2DP Sink (SBC/AAC decoder) | BAP Unicast Server (ASE Sink, LC3 decoder) |
-| **Audio Output** | `I2SStream` / `esp_driver_i2s` DMA | `esp_driver_i2s` DMA (identical GPIOs) |
+| **I2S Flow Control** | `I2SStream` / `AudioTools` write timeout | `esp_driver_i2s` DMA (`i2s_channel_write` timeout) |
+| **Clock Adaptation** | `I2SStream::setAudioInfo()` | `i2s_channel_reconfig_std_clock()` |
 | **Loopback Prevention** | `espod.play(true)` / `pause(true)` (`noLoop = true`) | `espod.play(true)` / `pause(true)` (`noLoop = true`) |
 | **Control Bridge** | AVRCP Passthrough (Play/Pause/Next/Prev) | MCP (Media Control Profile) Control Point OpCodes |
 | **ACK Gate Release** | `esp_avrc_ct_cb` metadata event $\to$ `_checkAllMetaUpdated()` | MCS GATT characteristic notification $\to$ `_checkAllMetaUpdated()` |
@@ -121,7 +177,7 @@ This mapping table defines how each functional requirement is fulfilled in the c
 
 ---
 
-## 4. Verification & Acceptance Criteria Matrix
+## 5. Verification & Acceptance Criteria Matrix
 
 | Test Case ID | Test Item | Verification Procedure | Expected Outcome |
 | :--- | :--- | :--- | :--- |
@@ -129,6 +185,8 @@ This mapping table defines how each functional requirement is fulfilled in the c
 | **TC-CONN-01** | Auto-Reconnect | 1. Pair device.<br>2. Walk out of range / disable phone Bluetooth.<br>3. Restore connection after 30s. | Device reconnects automatically within 10s without requiring MCU reboot. |
 | **TC-CONN-02** | Connect Auto-Play | Connect phone to superPod. | Serial log prints `espod enabled`; phone automatically starts media playback. |
 | **TC-AUD-01** | Glitch-Free Audio | Stream audio continuously for 30 minutes while sending active iAP dock commands. | Continuous high-fidelity audio via I2S DAC; zero buffer underruns, clicks, or pops. |
+| **TC-FLOW-01** | Dynamic Clock Adaptation | Transition playback between a 44.1 kHz track and a 48.0 kHz track. | I2S clock adjusts dynamically; pitch and playback speed remain correct with no pops. |
+| **TC-FLOW-02** | Mono-to-Stereo Playback | Play a mono audio file or voice memo from host. | Audio is duplicated to both Left and Right channels; no single-channel silence or phase corruption. |
 | **TC-CTRL-01** | Dock Control Responsiveness | Press Play, Pause, Next, Previous on dock/steering wheel. | Phone player reacts within $<150$ ms; correct track starts playing. |
 | **TC-CTRL-02** | Loopback Prevention | Press Pause on phone screen. | `espod` updates to Pause state without sending a redundant Pause command back to the phone. |
 | **TC-CTRL-03** | Track Change ACK Gate | Press Next Track on dock. | Dock receives `iPodAck_OK` immediately after new track metadata is delivered; no timeout. |

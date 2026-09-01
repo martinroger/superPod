@@ -97,7 +97,10 @@
 
 ### Entry 11: [BLE Audio Migration Feasibility & Functional Requirements Specification]
 - **Date/Time**: 2026-09-01
-- **User Directives**: Conduct feasibility analysis for migrating from Classic BT (A2DP/AVRCP) to BLE Audio (BAP/MCP/MCS) on ESP32-S31, clarify software vs hardware codec implications (LC3), perform in-depth code review of pairing, metadata hooks, and timing behaviors, and document an implementation-agnostic requirements specification.
+- **Branch**: `ble-audio`
+- **User Directives**: Conduct feasibility analysis for migrating from Classic BT (A2DP/AVRCP) to BLE Audio (BAP/MCP/MCS) on ESP32-S31, clarify software vs hardware codec implications (LC3), perform in-depth code review of pairing, metadata hooks, and timing behaviors, and document an implementation-agnostic requirements specification. Baseline toolchain target set to **ESP-IDF v6.1**. Clearly identify AudioTools I2S flow management capabilities in the specification.
 - **Actions Taken**:
+  - Created dedicated git branch `ble-audio`.
   - Performed comprehensive code review of pairing security (No-PIN / "Just Works" / SSP), auto-reconnect, auto-play on connect, metadata hooks, track-change ACK gate (`trackChangeAckPending`), and 1-second play position notifications.
-  - Created [`docs/FUNCTIONAL_REQUIREMENTS_BLE_AUDIO.md`](FUNCTIONAL_REQUIREMENTS_BLE_AUDIO.md) establishing the 6 requirement domains and verification criteria matrix.
+  - Analyzed `AudioTools` I2S flow management capabilities (dynamic clock reconfiguration, mono-to-stereo duplication, backpressure blocking, hardware mute, bit-depth handling, buffer capacity).
+  - Created and updated [`docs/FUNCTIONAL_REQUIREMENTS_BLE_AUDIO.md`](FUNCTIONAL_REQUIREMENTS_BLE_AUDIO.md) establishing the 7 requirement domains, I2S flow management breakdown, ESP-IDF v6.1 baseline, and verification criteria matrix.
