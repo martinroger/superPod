@@ -148,6 +148,7 @@ size_t esPod::processRawBuffer(const uint8_t *data, size_t len)
         ESP_LOGW(TAG, "cmdRingBuffer full, dropping %d raw bytes", (int)len);
         return 0;
     }
+    ESP_LOGD(TAG, "processRawBuffer: queued %u bytes into ringbuffer", (unsigned int)len);
     return len;
 }
 
@@ -454,12 +455,13 @@ void esPod::_pendingTimerCallback_0x04(TimerHandle_t xTimer)
 
 uint8_t esPod::_checksum(const uint8_t *byteArray, uint32_t len)
 {
-    uint8_t sum = 0;
+    uint32_t tempChecksum = len;
     for (uint32_t i = 0; i < len; i++)
     {
-        sum += byteArray[i];
+        tempChecksum += byteArray[i];
     }
-    return (uint8_t)(0x100 - sum);
+    tempChecksum = 0x100 - (tempChecksum & 0xFF);
+    return (uint8_t)tempChecksum;
 }
 
 void esPod::_sendPacket(const uint8_t *byteArray, uint32_t len)
@@ -479,6 +481,7 @@ void esPod::_queuePacket(const uint8_t *byteArray, uint32_t len)
         bufPtr[3 + len] = _checksum(byteArray, len);
 
         aapCommand cmd = {bufPtr, 3 + len + 1};
+        ESP_LOGD(TAG, "TX Packet queued: %u bytes (payload %lu bytes)", (unsigned int)(3 + len + 1), (unsigned long)len);
         xQueueSend(_txQueue, &cmd, 0);
     }
 }
@@ -495,6 +498,7 @@ void esPod::_queuePacketToFront(const uint8_t *byteArray, uint32_t len)
         bufPtr[3 + len] = _checksum(byteArray, len);
 
         aapCommand cmd = {bufPtr, 3 + len + 1};
+        ESP_LOGD(TAG, "TX Packet queued to front: %u bytes (payload %lu bytes)", (unsigned int)(3 + len + 1), (unsigned long)len);
         xQueueSendToFront(_txQueue, &cmd, 0);
     }
 }
@@ -522,6 +526,8 @@ void esPod::_processPacket(const uint8_t *byteArray, size_t len)
     uint8_t lingoID = lingoPtr[0];
     const uint8_t *cmdData = &lingoPtr[1];
     uint32_t cmdLen = payloadLen - 1;
+
+    ESP_LOGD(TAG, "RX iAP Packet: Lingo=0x%02x, cmdLen=%lu, totalLen=%u", lingoID, (unsigned long)cmdLen, (unsigned int)len);
 
     // Route command payload to target Lingo state machine handler
     switch (lingoID)
