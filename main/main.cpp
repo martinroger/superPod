@@ -38,6 +38,7 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -364,6 +365,15 @@ extern "C" void app_main(void)
 
     ESP_LOGI(TAG, "superPod firmware starting up on ESP32-S31...");
     ESP_LOGI(TAG, "Reset reason: %d", esp_reset_reason());
+
+    // Step 0.5: Initialize NVS Flash (required for RF/PHY calibration and Bluetooth bonding)
+    esp_err_t nvs_ret = nvs_flash_init();
+    if (nvs_ret == ESP_ERR_NVS_NO_FREE_PAGES || nvs_ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        nvs_ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(nvs_ret);
+    ESP_LOGI(TAG, "NVS flash initialized successfully");
 
     // Step 1: Initialize TinyUSB PL2303 Device Driver on Core 1 (APP_CPU)
     ESP_ERROR_CHECK(pl2303_usb_init(CONFIG_TINYUSB_TASK_CORE));

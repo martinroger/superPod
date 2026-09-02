@@ -117,3 +117,18 @@
   - Refactored `main/main.cpp` replacing A2DP and AudioTools types with `ble_audio_sink` APIs and `mediaMetadataQueue`.
   - Performed mandatory `fullclean` build check on ESP-IDF v6.1.0 (`superPod.bin` built cleanly with 0 errors, binary size reduced from ~2.2 MB to ~345 KB).
 
+### Entry 13: [BLE Audio Migration Phase 2: BLE GAP, Security & Auto-Reconnect Implementation]
+- **Date/Time**: 2026-09-02
+- **Branch**: `ble-audio`
+- **User Directives**: Implement REQ-SEC (Just Works pairing, no PIN/passkey, NVS bond persistence) and REQ-CONN (connectable extended advertising on 1M/2M PHY, auto-reconnect timer, connection lifecycle dispatch).
+- **Actions Taken**:
+  - Created `components/ble_audio_sink/include/ble_audio_gap.h` and `components/ble_audio_sink/src/ble_audio_gap.cpp`.
+  - Configured BLE controller and Bluedroid host with SMP parameters (`ESP_LE_AUTH_REQ_SC_BOND`, `ESP_IO_CAP_NONE`) and auto-confirmation of numeric comparison.
+  - Added early `nvs_flash_init()` sequence in `app_main` and `ble_audio_gap_init` to resolve PHY calibration and Bluetooth OSI config persistence errors (`phy_init: 0x1101`, `BT_OSI: err_code: 0x2`).
+  - Configured `CONFIG_BT_CTRL_SLEEP_ENABLE=y` and `CONFIG_BT_CTRL_LP_CLK_SRC_MAIN_XTAL=y` in `sdkconfig.defaults` to eliminate the 136 kHz RC low-accuracy clock warning and guarantee < 500 ppm clock precision for ACL and ISO timing.
+  - Guarded `esp_bt_controller_mem_release` on ESP32-S31 to eliminate unsupported memory release warnings.
+  - Formulated connectable Extended Advertising packet on 1M/2M PHY with Flags, ASCS 0x184E service UUID, targeted audio announcement contexts (`MEDIA | CONVERSATIONAL | UNSPECIFIED`), and local device name.
+  - Implemented NVS persistence for bonded peer address (`save_last_bda_to_nvs`, `load_last_bda_from_nvs`) and 10s auto-reconnect timer (`esp_timer_create`).
+  - Wired `ble_audio_gap` into `ble_audio_sink.cpp`.
+  - Verified compilation on ESP-IDF v6.1.0 (`superPod.bin` compiled cleanly, 0 errors, size `0x153400`).
+
