@@ -174,6 +174,9 @@ void initializeBLEAudioSink()
         .bclk_pin = CONFIG_I2S_BCLK_PIN,
         .ws_pin = CONFIG_I2S_WS_PIN,
         .dout_pin = CONFIG_I2S_DOUT_PIN,
+        .mclk_pin = -1,
+        .mute_pin = -1,
+        .default_sample_rate = 48000,
     };
 
     ESP_ERROR_CHECK(ble_audio_sink_init(&config));

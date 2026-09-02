@@ -132,3 +132,23 @@
   - Wired `ble_audio_gap` into `ble_audio_sink.cpp`.
   - Verified compilation on ESP-IDF v6.1.0 (`superPod.bin` compiled cleanly, 0 errors, size `0x153400`).
 
+### Entry 14: [BLE Audio Migration Phase 3: BAP Unicast Sink, Dual LC3 Decoder & Native I2S DMA Implementation]
+- **Date/Time**: 2026-09-02
+- **Branch**: `ble-audio`
+- **User Directives**: Implement BAP Unicast Sink, PACS capabilities, Google liblc3 decoder, and native I2S DMA audio driver satisfying REQ-AUD and REQ-FLOW.
+- **Actions Taken**:
+  - Implemented `components/ble_audio_sink/include/ble_audio_i2s.h` and `components/ble_audio_sink/src/ble_audio_i2s.cpp` using native `esp_driver_i2s` standard TX channel in Philips I2S slot mode (`I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG`) for UDA1334A DAC. Added on-the-fly sample rate clock reconfiguration (`ble_audio_i2s_set_sample_rate`, REQ-FLOW-1), mono-to-stereo sample duplication (`REQ-FLOW-2`), DMA ring buffer backpressure (`REQ-FLOW-3`), and hardware mute GPIO pin control with zero-fill pop suppression (`REQ-FLOW-4`, `REQ-AUD-2`).
+  - Integrated official Google `liblc3` codec component (`components/liblc3`) for bit-exact LC3 decoding.
+  - Implemented `components/ble_audio_sink/include/ble_audio_bap.h` and `components/ble_audio_sink/src/ble_audio_bap.c` in pure C:
+    - Initialized BLE Audio common stack (`esp_ble_audio_common_init`).
+    - Registered PACS service and LC3 sink/source capabilities with high-fidelity 48kHz/44.1kHz stereo presets (up to 155 octets per frame, REQ-AUD-1).
+    - Registered BAP Unicast Server and stream operation handlers (`esp_ble_audio_bap_unicast_server_register`, `esp_ble_audio_bap_stream_cb_register`).
+    - Created dedicated high-priority FreeRTOS decoding task (`ble_lc3_dec`) with non-blocking queue handoff from `iso_task` to prevent stack overflow.
+    - Handled ASE lifecycle and stereo SDU unpacking (240 bytes = 120 bytes L + 120 bytes R) with dual independent `lc3_decoder_t` instances (`dec_left` and `dec_right`), interleaving PCM into true 16-bit stereo.
+  - Resolved `AudioSecInsufficientAuth` and disconnect `0x13` by forwarding `ESP_GAP_BLE_AUTH_CMPL_EVT` to `esp_ble_audio_gap_app_post_event`.
+  - Added prominent console logging across connection, pairing, authentication, and stream lifecycle events.
+  - Extended `ble_audio_sink_config_t` and facade in `ble_audio_sink.cpp` integrating I2S and BAP layers.
+  - Updated `sdkconfig.defaults` with `CONFIG_LOG_DEFAULT_LEVEL_INFO=y` and updated `.geminirules` with mandatory `fullclean reconfigure` rule on sdkconfig edits.
+  - Verified on hardware: clean, stable 48 kHz stereo music playback via UDA1334A I2S DAC.
+
+

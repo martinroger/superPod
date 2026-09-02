@@ -62,6 +62,9 @@ typedef struct {
     int bclk_pin;               /*!< I2S Bit Clock (BCLK) GPIO pin */
     int ws_pin;                 /*!< I2S Word Select (WS/LRCK) GPIO pin */
     int dout_pin;               /*!< I2S Data Out (DOUT/SD) GPIO pin */
+    int mclk_pin;               /*!< Optional Master Clock (MCLK) GPIO pin (-1 if unused) */
+    int mute_pin;               /*!< Optional DAC Hardware Mute GPIO pin (-1 if unused) */
+    uint32_t default_sample_rate; /*!< Initial I2S sample rate in Hz (e.g. 48000) */
 } ble_audio_sink_config_t;
 
 /**

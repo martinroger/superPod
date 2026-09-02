@@ -1,10 +1,11 @@
 /**
- * @file ble_audio_gap.cpp
+ * @file ble_audio_gap.c
  * @brief BLE GAP, Security & Auto-Reconnect Implementation (REQ-SEC, REQ-CONN).
  */
 
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 #include "esp_log.h"
 #include "esp_err.h"
 #include "nvs_flash.h"
@@ -17,6 +18,7 @@
 #include "esp_bt_main.h"
 #include "esp_gap_ble_api.h"
 #include "esp_ble_audio_defs.h"
+#include "esp_ble_audio_common_api.h"
 
 #include "ble_audio_gap.h"
 
@@ -30,7 +32,7 @@ static const char *TAG = "BLE_AUDIO_GAP";
 #define ADV_INTERVAL_MS     25  // 20-30ms fast connectable advertising interval for BAP
 #define AUTO_RECONNECT_MS   10000
 
-static SemaphoreHandle_t s_adv_sem = nullptr;
+static SemaphoreHandle_t s_adv_sem = NULL;
 static esp_bt_status_t s_adv_op_status = ESP_BT_STATUS_SUCCESS;
 static bool s_is_connected = false;
 static uint8_t s_connected_bda[6] = {0};
@@ -40,9 +42,9 @@ static char s_device_name[32] = "superPod-Audio";
 static uint8_t s_ext_adv_data[64];
 static size_t s_ext_adv_data_len = 0;
 
-static ble_audio_conn_state_cb_t s_conn_cb = nullptr;
-static void *s_conn_user_data = nullptr;
-static esp_timer_handle_t s_auto_reconnect_timer = nullptr;
+static ble_audio_conn_state_cb_t s_conn_cb = NULL;
+static void *s_conn_user_data = NULL;
+static esp_timer_handle_t s_auto_reconnect_timer = NULL;
 
 #define WAIT_ADV_OP(_call) do { \
     esp_err_t _err = (_call); \
@@ -124,54 +126,7 @@ static void load_last_bda_from_nvs(void)
 }
 
 /**
- * @brief Constructs connectable Extended Advertising raw payload.
- */
-static void build_ext_adv_payload(void)
-{
-    size_t idx = 0;
-    size_t name_len = strlen(s_device_name);
-
-    /* 1. Flags (General Discoverable + BR/EDR Not Supported) */
-    s_ext_adv_data[idx++] = 0x02;
-    s_ext_adv_data[idx++] = ESP_BLE_AD_TYPE_FLAG;
-    s_ext_adv_data[idx++] = ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT;
-
-    /* 2. Incomplete List of 16-bit Service UUIDs (ASCS: 0x184E) */
-    s_ext_adv_data[idx++] = 0x03;
-    s_ext_adv_data[idx++] = ESP_BLE_AD_TYPE_16SRV_PART;
-    s_ext_adv_data[idx++] = (ESP_BLE_AUDIO_UUID_ASCS_VAL & 0xFF);
-    s_ext_adv_data[idx++] = ((ESP_BLE_AUDIO_UUID_ASCS_VAL >> 8) & 0xFF);
-
-    /* 3. Service Data 16-bit UUID (Targeted Unicast Announcement for Audio Contexts) */
-    uint16_t sink_context = ESP_BLE_AUDIO_CONTEXT_TYPE_UNSPECIFIED |
-                            ESP_BLE_AUDIO_CONTEXT_TYPE_CONVERSATIONAL |
-                            ESP_BLE_AUDIO_CONTEXT_TYPE_MEDIA;
-    uint16_t source_context = sink_context;
-
-    s_ext_adv_data[idx++] = 0x09;
-    s_ext_adv_data[idx++] = ESP_BLE_AD_TYPE_SERVICE_DATA;
-    s_ext_adv_data[idx++] = (ESP_BLE_AUDIO_UUID_ASCS_VAL & 0xFF);
-    s_ext_adv_data[idx++] = ((ESP_BLE_AUDIO_UUID_ASCS_VAL >> 8) & 0xFF);
-    s_ext_adv_data[idx++] = ESP_BLE_AUDIO_UNICAST_ANNOUNCEMENT_TARGETED;
-    s_ext_adv_data[idx++] = (sink_context & 0xFF);
-    s_ext_adv_data[idx++] = ((sink_context >> 8) & 0xFF);
-    s_ext_adv_data[idx++] = (source_context & 0xFF);
-    s_ext_adv_data[idx++] = ((source_context >> 8) & 0xFF);
-    s_ext_adv_data[idx++] = 0x00; /* Metadata length */
-
-    /* 4. Complete Local Device Name */
-    if (idx + 2 + name_len <= sizeof(s_ext_adv_data)) {
-        s_ext_adv_data[idx++] = (uint8_t)(name_len + 1);
-        s_ext_adv_data[idx++] = ESP_BLE_AD_TYPE_NAME_CMPL;
-        memcpy(&s_ext_adv_data[idx], s_device_name, name_len);
-        idx += name_len;
-    }
-
-    s_ext_adv_data_len = idx;
-}
-
-/**
- * @brief Auto-reconnection timer callback running every 10 seconds (REQ-CONN-1).
+ * @brief Timer callback for periodic background reconnection to last bonded peer (REQ-CONN-1).
  */
 static void auto_reconnect_timer_callback(void *arg)
 {
@@ -180,19 +135,52 @@ static void auto_reconnect_timer_callback(void *arg)
     }
 
     if (s_has_bonded_bda) {
-        ESP_LOGI(TAG, "Auto-reconnect interval (10s): waiting for bonded peer %02x:%02x:%02x:%02x:%02x:%02x",
+        ESP_LOGD(TAG, "Auto-reconnect timer tick: target bonded peer %02x:%02x:%02x:%02x:%02x:%02x",
                  s_last_bonded_bda[0], s_last_bonded_bda[1], s_last_bonded_bda[2],
                  s_last_bonded_bda[3], s_last_bonded_bda[4], s_last_bonded_bda[5]);
-    } else {
-        ESP_LOGD(TAG, "Auto-reconnect interval (10s): advertising connectable BLE Audio");
     }
-
-    // Refresh connectable advertising
-    esp_ble_gap_ext_adv_start(1, s_ext_adv_inst);
 }
 
 /**
- * @brief Bluedroid GAP event handler for advertising and Just-Works security.
+ * @brief Builds the BLE connectable extended advertising raw packet.
+ */
+static void build_ext_adv_payload(void)
+{
+    size_t offset = 0;
+
+    // 1. Flags: General Discoverable & BR/EDR not supported
+    s_ext_adv_data[offset++] = 2;
+    s_ext_adv_data[offset++] = ESP_BLE_AD_TYPE_FLAG;
+    s_ext_adv_data[offset++] = ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT;
+
+    // 2. Complete 16-bit Service UUIDs: ASCS (0x184E)
+    s_ext_adv_data[offset++] = 3;
+    s_ext_adv_data[offset++] = ESP_BLE_AD_TYPE_16SRV_CMPL;
+    s_ext_adv_data[offset++] = 0x4E;
+    s_ext_adv_data[offset++] = 0x18;
+
+    // 3. Service Data: Targeted Audio Announcement (0x184E -> Audio Contexts)
+    s_ext_adv_data[offset++] = 5;
+    s_ext_adv_data[offset++] = ESP_BLE_AD_TYPE_SERVICE_DATA;
+    s_ext_adv_data[offset++] = 0x4E;
+    s_ext_adv_data[offset++] = 0x18;
+    s_ext_adv_data[offset++] = (uint8_t)(ESP_BLE_AUDIO_CONTEXT_TYPE_MEDIA & 0xFF);
+    s_ext_adv_data[offset++] = (uint8_t)((ESP_BLE_AUDIO_CONTEXT_TYPE_MEDIA >> 8) & 0xFF);
+
+    // 4. Complete Local Name
+    size_t name_len = strlen(s_device_name);
+    if (name_len > 0 && offset + 2 + name_len <= sizeof(s_ext_adv_data)) {
+        s_ext_adv_data[offset++] = (uint8_t)(name_len + 1);
+        s_ext_adv_data[offset++] = ESP_BLE_AD_TYPE_NAME_CMPL;
+        memcpy(&s_ext_adv_data[offset], s_device_name, name_len);
+        offset += name_len;
+    }
+
+    s_ext_adv_data_len = offset;
+}
+
+/**
+ * @brief Bluedroid BLE GAP event handler.
  */
 static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
@@ -219,10 +207,12 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 
     /* REQ-SEC-1: "Just Works" SMP pairing request from peer (IO_CAP=NONE) */
     case ESP_GAP_BLE_SEC_REQ_EVT:
-        ESP_LOGI(TAG, "SMP Security Request from %02x:%02x:%02x:%02x:%02x:%02x -> Accepting (Just Works)",
+        ESP_LOGI(TAG, "==================================================");
+        ESP_LOGI(TAG, ">>> BLE PAIRING REQUEST from %02x:%02x:%02x:%02x:%02x:%02x (Just Works) <<<",
                  param->ble_security.ble_req.bd_addr[0], param->ble_security.ble_req.bd_addr[1],
                  param->ble_security.ble_req.bd_addr[2], param->ble_security.ble_req.bd_addr[3],
                  param->ble_security.ble_req.bd_addr[4], param->ble_security.ble_req.bd_addr[5]);
+        ESP_LOGI(TAG, "==================================================");
         esp_ble_gap_security_rsp(param->ble_security.ble_req.bd_addr, true);
         break;
 
@@ -234,11 +224,15 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 
     /* REQ-SEC-2: Authentication & Bonding Complete */
     case ESP_GAP_BLE_AUTH_CMPL_EVT:
+        /* Forward to BLE Audio library to authorize GATT Audio characteristics */
+        esp_ble_audio_gap_app_post_event(event, param);
         if (param->ble_security.auth_cmpl.success) {
-            ESP_LOGI(TAG, "Authentication SUCCESS: bonded peer %02x:%02x:%02x:%02x:%02x:%02x",
+            ESP_LOGI(TAG, "==================================================");
+            ESP_LOGI(TAG, ">>> BLE AUTHENTICATION SUCCESS: %02x:%02x:%02x:%02x:%02x:%02x <<<",
                      param->ble_security.auth_cmpl.bd_addr[0], param->ble_security.auth_cmpl.bd_addr[1],
                      param->ble_security.auth_cmpl.bd_addr[2], param->ble_security.auth_cmpl.bd_addr[3],
                      param->ble_security.auth_cmpl.bd_addr[4], param->ble_security.auth_cmpl.bd_addr[5]);
+            ESP_LOGI(TAG, "==================================================");
             save_last_bda_to_nvs(param->ble_security.auth_cmpl.bd_addr);
         } else {
             ESP_LOGW(TAG, "Authentication FAILED, reason: 0x%x", param->ble_security.auth_cmpl.fail_reason);
@@ -246,7 +240,7 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
         break;
 
     case ESP_GAP_BLE_UPDATE_CONN_PARAMS_EVT:
-        ESP_LOGD(TAG, "Connection parameters updated: interval=%u, latency=%u, timeout=%u",
+        ESP_LOGI(TAG, ">>> BLE Connection parameters updated: interval=%u, latency=%u, timeout=%u <<<",
                  param->update_conn_params.conn_int,
                  param->update_conn_params.latency,
                  param->update_conn_params.timeout);
@@ -261,13 +255,13 @@ esp_err_t ble_audio_gap_init(const char *device_name)
 {
     esp_err_t ret;
 
-    if (device_name != nullptr && strlen(device_name) > 0) {
+    if (device_name != NULL && strlen(device_name) > 0) {
         strncpy(s_device_name, device_name, sizeof(s_device_name) - 1);
         s_device_name[sizeof(s_device_name) - 1] = '\0';
     }
 
     s_adv_sem = xSemaphoreCreateBinary();
-    if (s_adv_sem == nullptr) {
+    if (s_adv_sem == NULL) {
         ESP_LOGE(TAG, "Failed to create adv semaphore");
         return ESP_ERR_NO_MEM;
     }
@@ -357,15 +351,20 @@ esp_err_t ble_audio_gap_init(const char *device_name)
     return ESP_OK;
 }
 
+static bool s_adv_params_configured = false;
+
 esp_err_t ble_audio_gap_start_advertising(void)
 {
     ESP_LOGI(TAG, "Starting BLE Audio connectable Extended Advertising...");
-    WAIT_ADV_OP(esp_ble_gap_ext_adv_set_params(ADV_HANDLE, &s_ext_adv_params));
-    WAIT_ADV_OP(esp_ble_gap_config_ext_adv_data_raw(ADV_HANDLE, s_ext_adv_data_len, s_ext_adv_data));
+    if (!s_adv_params_configured) {
+        WAIT_ADV_OP(esp_ble_gap_ext_adv_set_params(ADV_HANDLE, &s_ext_adv_params));
+        WAIT_ADV_OP(esp_ble_gap_config_ext_adv_data_raw(ADV_HANDLE, s_ext_adv_data_len, s_ext_adv_data));
+        s_adv_params_configured = true;
+    }
     WAIT_ADV_OP(esp_ble_gap_ext_adv_start(1, s_ext_adv_inst));
 
     // Start auto-reconnect periodic timer if not already active
-    if (s_auto_reconnect_timer != nullptr && !esp_timer_is_active(s_auto_reconnect_timer)) {
+    if (s_auto_reconnect_timer != NULL && !esp_timer_is_active(s_auto_reconnect_timer)) {
         esp_timer_start_periodic(s_auto_reconnect_timer, AUTO_RECONNECT_MS * 1000);
     }
 
@@ -412,10 +411,10 @@ void ble_audio_gap_on_app_event(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_par
             ESP_LOGI(TAG, "ACL Connected / PHY updated: tx_phy=%u, rx_phy=%u",
                      param->phy_update.tx_phy, param->phy_update.rx_phy);
             s_is_connected = true;
-            if (s_auto_reconnect_timer != nullptr && esp_timer_is_active(s_auto_reconnect_timer)) {
+            if (s_auto_reconnect_timer != NULL && esp_timer_is_active(s_auto_reconnect_timer)) {
                 esp_timer_stop(s_auto_reconnect_timer);
             }
-            if (s_conn_cb != nullptr) {
+            if (s_conn_cb != NULL) {
                 s_conn_cb(BLE_AUDIO_CONN_STATE_CONNECTED, s_conn_user_data);
             }
         }
@@ -425,3 +424,4 @@ void ble_audio_gap_on_app_event(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_par
         break;
     }
 }
+
