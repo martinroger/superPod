@@ -27,23 +27,23 @@ menu "superPod Core Configuration"
     endmenu
 
     menu "Task Stack Sizes and Priorities"
-        config AVRC_QUEUE_SIZE
-            int "AVRCP Metadata Queue Depth"
+        config BLE_MEDIA_QUEUE_SIZE
+            int "BLE Media Metadata Queue Depth"
             default 32
             help
-                Maximum number of pending AVRCP metadata items stored in queue.
+                Maximum number of pending media metadata items stored in queue.
 
-        config PROCESS_AVRC_TASK_STACK_SIZE
-            int "AVRCP Processing Task Stack Size"
+        config PROCESS_MEDIA_TASK_STACK_SIZE
+            int "Media Processing Task Stack Size"
             default 4096
             help
-                Stack size in bytes for the AVRCP metadata processing task.
+                Stack size in bytes for the media metadata processing task.
 
-        config PROCESS_AVRC_TASK_PRIORITY
-            int "AVRCP Processing Task Priority"
+        config PROCESS_MEDIA_TASK_PRIORITY
+            int "Media Processing Task Priority"
             default 6
             help
-                Priority level for the AVRCP metadata processing task.
+                Priority level for the media metadata processing task.
 
         config USB_ESPOD_BRIDGE_TASK_STACK_SIZE
             int "USB to esPod Bridge Task Stack Size"
@@ -61,21 +61,21 @@ menu "superPod Core Configuration"
     menu "I2S External DAC Configuration"
         config I2S_BCLK_PIN
             int "I2S Bit Clock (BCLK) GPIO Pin"
-            default 27
+            default 45
 
         config I2S_WS_PIN
             int "I2S Word Select (WS/LRCK) GPIO Pin"
-            default 25
+            default 46
 
         config I2S_DOUT_PIN
             int "I2S Data Out (DOUT/SD) GPIO Pin"
-            default 26
+            default 47
     endmenu
 
-    menu "Bluetooth A2DP Sink Configuration"
-        config A2DP_SINK_NAME
-            string "Bluetooth A2DP Sink Device Name"
-            default "superPod-A2DP"
+    menu "Bluetooth LE Audio Sink Configuration"
+        config BLE_AUDIO_SINK_NAME
+            string "Bluetooth LE Audio Sink Device Name"
+            default "superPod-Audio"
     endmenu
 
     menu "USB PL2303 Bridge Configuration"

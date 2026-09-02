@@ -104,3 +104,16 @@
   - Performed comprehensive code review of pairing security (No-PIN / "Just Works" / SSP), auto-reconnect, auto-play on connect, metadata hooks, track-change ACK gate (`trackChangeAckPending`), and 1-second play position notifications.
   - Analyzed `AudioTools` I2S flow management capabilities (dynamic clock reconfiguration, mono-to-stereo duplication, backpressure blocking, hardware mute, bit-depth handling, buffer capacity).
   - Created and updated [`docs/FUNCTIONAL_REQUIREMENTS_BLE_AUDIO.md`](FUNCTIONAL_REQUIREMENTS_BLE_AUDIO.md) establishing the 7 requirement domains, I2S flow management breakdown, ESP-IDF v6.1 baseline, and verification criteria matrix.
+
+### Entry 12: [BLE Audio Migration Phase 1: Clean Excision & Stack Configuration]
+- **Date/Time**: 2026-09-02
+- **Branch**: `ble-audio`
+- **User Directives**: Cut out Classic BT and AudioTools cleanly, align sdkconfig.defaults with official ESP-IDF v6.1 BAP unicast_server and ESP32-S31 ISO defaults, establish dedicated `components/ble_audio_sink` skeleton mapping to requirement domains, refactor main orchestrator, enforce mandatory pause between phases and MCP documentation lookups.
+- **Actions Taken**:
+  - Excised `pschatzmann/ESP32-A2DP` and `pschatzmann/arduino-audio-tools` from `main/idf_component.yml`.
+  - Deleted legacy `main/audio_tools_compat.h` and cleaned C++ compile-time `-include` shims from root `CMakeLists.txt`.
+  - Configured `sdkconfig.defaults` for Bluedroid host, BLE 5.0+, ISO hardware support (`CONFIG_BT_LE_ISO_SUPPORT=y`, `CONFIG_BT_BLE_FEAT_ISO_EN=y`, `CONFIG_BT_ISO_MAX_CHAN=2`), BAP Unicast Server, and PACS contexts.
+  - Created `components/ble_audio_sink` (`CMakeLists.txt`, `include/ble_audio_sink.h`, `src/ble_audio_sink.cpp`) with clean C/C++ public API for GAP, BAP, I2S, and MCP callbacks.
+  - Refactored `main/main.cpp` replacing A2DP and AudioTools types with `ble_audio_sink` APIs and `mediaMetadataQueue`.
+  - Performed mandatory `fullclean` build check on ESP-IDF v6.1.0 (`superPod.bin` built cleanly with 0 errors, binary size reduced from ~2.2 MB to ~345 KB).
+

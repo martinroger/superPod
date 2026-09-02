@@ -45,36 +45,29 @@
 #include "pl2303_usb.h"
 #include "esPod.h"
 
-// AudioTools and ESP32-A2DP components
-#include "AudioTools.h"
-#include "BluetoothA2DPSink.h"
+// Native BLE Audio Sink component
+#include "ble_audio_sink.h"
 
 static const char *TAG = "SUPERPOD_MAIN";
 
-#ifndef ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND
-#define ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND ESP_A2D_AUDIO_STATE_SUSPEND
-#endif
-
 #pragma region Global Objects and Declarations
-I2SStream i2s;
-BluetoothA2DPSink a2dp_sink;
 esPod espod(1, -1, -1, 19200); // esPod in direct memory ingestion mode (no UART pins required)
 
-struct avrcMetadata
+struct mediaMetadata
 {
     uint8_t id = 0;
     uint8_t *payload = nullptr;
 };
 
-QueueHandle_t avrcMetadataQueue = nullptr;
-TaskHandle_t processAVRCTaskHandle = nullptr;
+QueueHandle_t mediaMetadataQueue = nullptr;
+TaskHandle_t processMediaTaskHandle = nullptr;
 
-void initializeA2DPSink();
-esp_err_t initializeAVRCTask();
-void connectionStateChanged(esp_a2d_connection_state_t state, void *ptr);
-void audioStateChanged(esp_a2d_audio_state_t state, void *ptr);
-void avrc_rn_play_pos_callback(uint32_t play_pos);
-void avrc_metadata_callback(uint8_t id, const uint8_t *text);
+void initializeBLEAudioSink();
+esp_err_t initializeMediaTask();
+void connectionStateChanged(ble_audio_conn_state_t state, void *ptr);
+void audioStateChanged(ble_audio_playback_state_t state, void *ptr);
+void media_play_pos_callback(uint32_t play_pos);
+void media_metadata_callback(uint8_t id, const uint8_t *text);
 void playStatusHandler(PB_COMMAND playCommand);
 #pragma endregion
 
@@ -124,37 +117,37 @@ static void usb_espod_bridge_task(void *pvParameters)
 
 #pragma endregion
 
-#pragma region AVRCP Queue Processing Task
+#pragma region Media Metadata Queue Processing Task
 
 /**
- * @brief Low-priority task processing AVRCP track metadata items from queue and updating esPod state.
+ * @brief Low-priority task processing media track metadata items from queue and updating esPod state.
  * 
  * @param pvParameters Unused.
  */
-static void processAVRCTask(void *pvParameters)
+static void processMediaTask(void *pvParameters)
 {
-    avrcMetadata incMetadata;
+    mediaMetadata incMetadata;
 
     while (true)
     {
-        // Block indefinitely until an AVRCP metadata item is received from the queue
-        if (xQueueReceive(avrcMetadataQueue, &incMetadata, portMAX_DELAY) == pdTRUE)
+        // Block indefinitely until a media metadata item is received from the queue
+        if (xQueueReceive(mediaMetadataQueue, &incMetadata, portMAX_DELAY) == pdTRUE)
         {
             if (incMetadata.payload != nullptr)
             {
                 // Route metadata payload to appropriate esPod state update method
                 switch (incMetadata.id)
                 {
-                case ESP_AVRC_MD_ATTR_ALBUM:
+                case BLE_AUDIO_MD_ATTR_ALBUM:
                     espod.updateAlbumName((char *)incMetadata.payload);
                     break;
-                case ESP_AVRC_MD_ATTR_ARTIST:
+                case BLE_AUDIO_MD_ATTR_ARTIST:
                     espod.updateArtistName((char *)incMetadata.payload);
                     break;
-                case ESP_AVRC_MD_ATTR_TITLE:
+                case BLE_AUDIO_MD_ATTR_TITLE:
                     espod.updateTrackTitle((char *)incMetadata.payload);
                     break;
-                case ESP_AVRC_MD_ATTR_PLAYING_TIME:
+                case BLE_AUDIO_MD_ATTR_PLAYING_TIME:
                     espod.updateTrackDuration((uint32_t)atoi((char *)incMetadata.payload));
                     break;
                 }
@@ -171,55 +164,48 @@ static void processAVRCTask(void *pvParameters)
 #pragma region Helper Function Definitions
 
 /**
- * @brief Configures I2S DAC GPIO pins and initializes the Bluetooth A2DP Sink with AudioTools I2S output.
+ * @brief Configures I2S DAC GPIO pins and initializes the Bluetooth LE Audio Sink subsystem.
  */
-void initializeA2DPSink()
+void initializeBLEAudioSink()
 {
-    // Configure I2S master TX mode with pins defined in Kconfig
-    auto config = i2s.defaultConfig(TX_MODE);
-    config.pin_bck = CONFIG_I2S_BCLK_PIN;
-    config.pin_ws = CONFIG_I2S_WS_PIN;
-    config.pin_data = CONFIG_I2S_DOUT_PIN;
-    i2s.begin(config);
+    ble_audio_sink_config_t config = {
+        .device_name = CONFIG_BLE_AUDIO_SINK_NAME,
+        .bclk_pin = CONFIG_I2S_BCLK_PIN,
+        .ws_pin = CONFIG_I2S_WS_PIN,
+        .dout_pin = CONFIG_I2S_DOUT_PIN,
+    };
 
-    // Bind AudioTools I2S stream to BluetoothA2DPSink
-    a2dp_sink.set_output(i2s);
-    // a2dp_sink.set_auto_reconnect(true, 10000);
-    a2dp_sink.set_on_connection_state_changed(connectionStateChanged);
-    a2dp_sink.set_on_audio_state_changed(audioStateChanged);
-    a2dp_sink.set_avrc_metadata_callback(avrc_metadata_callback);
-    a2dp_sink.set_avrc_metadata_attribute_mask(ESP_AVRC_MD_ATTR_TITLE | ESP_AVRC_MD_ATTR_ARTIST |
-                                               ESP_AVRC_MD_ATTR_ALBUM | ESP_AVRC_MD_ATTR_PLAYING_TIME);
-    a2dp_sink.set_avrc_rn_play_pos_callback(avrc_rn_play_pos_callback, 1);
+    ESP_ERROR_CHECK(ble_audio_sink_init(&config));
+    ble_audio_sink_set_connection_state_callback(connectionStateChanged, nullptr);
+    ble_audio_sink_set_audio_state_callback(audioStateChanged, nullptr);
+    ble_audio_sink_set_metadata_callback(media_metadata_callback);
+    ble_audio_sink_set_play_pos_callback(media_play_pos_callback);
 
-    // Start Bluetooth A2DP Sink service with configured device name
-    a2dp_sink.start(CONFIG_A2DP_SINK_NAME);
-    ESP_LOGI(TAG, "A2DP Sink started: %s", CONFIG_A2DP_SINK_NAME);
-        a2dp_sink.set_auto_reconnect(true, 10000);
-
+    ESP_ERROR_CHECK(ble_audio_sink_start());
+    ESP_LOGI(TAG, "BLE Audio Sink started: %s", CONFIG_BLE_AUDIO_SINK_NAME);
 }
 
 /**
- * @brief Initializes AVRCP metadata queue and low-priority processing task.
+ * @brief Initializes media metadata queue and processing task on Core 0.
  * 
  * @return esp_err_t ESP_OK on success, or ESP_FAIL if queue/task creation fails.
  */
-esp_err_t initializeAVRCTask()
+esp_err_t initializeMediaTask()
 {
-    // Create FreeRTOS queue for buffering incoming AVRCP metadata items
-    avrcMetadataQueue = xQueueCreate(CONFIG_AVRC_QUEUE_SIZE, sizeof(avrcMetadata));
-    if (avrcMetadataQueue == nullptr)
+    // Create FreeRTOS queue for buffering incoming media metadata items
+    mediaMetadataQueue = xQueueCreate(CONFIG_BLE_MEDIA_QUEUE_SIZE, sizeof(mediaMetadata));
+    if (mediaMetadataQueue == nullptr)
     {
-        ESP_LOGE(TAG, "Failed to create metadata queue");
+        ESP_LOGE(TAG, "Failed to create media metadata queue");
         return ESP_FAIL;
     }
 
-    // Launch low-priority AVRCP processing task on Core 0 (PRO_CPU)
-    xTaskCreatePinnedToCore(processAVRCTask, "processAVRCTask", CONFIG_PROCESS_AVRC_TASK_STACK_SIZE, NULL,
-                            CONFIG_PROCESS_AVRC_TASK_PRIORITY, &processAVRCTaskHandle, CONFIG_BT_BLUEDROID_PIN_TO_CORE);
-    if (processAVRCTaskHandle == nullptr)
+    // Launch low-priority media processing task on Core 0 (PRO_CPU)
+    xTaskCreatePinnedToCore(processMediaTask, "processMediaTask", CONFIG_PROCESS_MEDIA_TASK_STACK_SIZE, NULL,
+                            CONFIG_PROCESS_MEDIA_TASK_PRIORITY, &processMediaTaskHandle, CONFIG_BT_BLUEDROID_PIN_TO_CORE);
+    if (processMediaTaskHandle == nullptr)
     {
-        ESP_LOGE(TAG, "Failed to create processAVRCTask");
+        ESP_LOGE(TAG, "Failed to create processMediaTask");
         return ESP_FAIL;
     }
 
@@ -228,49 +214,52 @@ esp_err_t initializeAVRCTask()
 
 #pragma endregion
 
-#pragma region A2DP / AVRCP Callback Definitions
+#pragma region BLE Audio Callback Definitions
 
 /**
- * @brief Handles Bluetooth A2DP connection state changes.
+ * @brief Handles Bluetooth LE Audio connection state changes.
  * 
  * Enables esPod protocol processing on peer connection, and disables/resets esPod state on disconnection.
  * 
- * @param[in] state Current A2DP connection state (CONNECTED / DISCONNECTED).
+ * @param[in] state Current BLE connection state.
  * @param[in] ptr Optional user data pointer (unused).
  */
-void connectionStateChanged(esp_a2d_connection_state_t state, void *ptr)
+void connectionStateChanged(ble_audio_conn_state_t state, void *ptr)
 {
     switch (state)
     {
-    case ESP_A2D_CONNECTION_STATE_CONNECTED:
-        ESP_LOGI(TAG, "ESP_A2D_CONNECTION_STATE_CONNECTED, espod enabled");
+    case BLE_AUDIO_CONN_STATE_CONNECTED:
+        ESP_LOGI(TAG, "BLE_AUDIO_CONN_STATE_CONNECTED, espod enabled");
         espod.disabled = false;
-        a2dp_sink.play();
+        ble_audio_sink_play();
         break;
-    case ESP_A2D_CONNECTION_STATE_DISCONNECTED:
-        ESP_LOGI(TAG, "ESP_A2D_CONNECTION_STATE_DISCONNECTED, espod disabled");
+    case BLE_AUDIO_CONN_STATE_DISCONNECTED:
+        ESP_LOGI(TAG, "BLE_AUDIO_CONN_STATE_DISCONNECTED, espod disabled");
         espod.resetState();
         espod.disabled = true;
+        break;
+    default:
         break;
     }
 }
 
 /**
- * @brief Handles Bluetooth A2DP audio playback state changes (Started / Suspended).
+ * @brief Handles Bluetooth LE Audio playback state changes (Playing / Paused / Stopped).
  * 
  * Synchronizes esPod playback status state machine with Bluetooth audio stream state.
  * 
- * @param[in] state Current A2DP audio state (STARTED / REMOTE_SUSPEND).
+ * @param[in] state Current playback state.
  * @param[in] ptr Optional user data pointer (unused).
  */
-void audioStateChanged(esp_a2d_audio_state_t state, void *ptr)
+void audioStateChanged(ble_audio_playback_state_t state, void *ptr)
 {
     switch (state)
     {
-    case ESP_A2D_AUDIO_STATE_STARTED:
+    case BLE_AUDIO_PLAYBACK_PLAYING:
         espod.play(true);
         break;
-    case ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND:
+    case BLE_AUDIO_PLAYBACK_PAUSED:
+    case BLE_AUDIO_PLAYBACK_STOPPED:
         espod.pause(true);
         break;
     default:
@@ -279,38 +268,38 @@ void audioStateChanged(esp_a2d_audio_state_t state, void *ptr)
 }
 
 /**
- * @brief Handles AVRCP track play position updates from Bluetooth peer.
+ * @brief Handles periodic play position updates from Bluetooth peer.
  * 
  * @param[in] play_pos Current playback position in milliseconds.
  */
-void avrc_rn_play_pos_callback(uint32_t play_pos)
+void media_play_pos_callback(uint32_t play_pos)
 {
     espod.updatePlayPosition(play_pos);
-    ESP_LOGV(TAG, "Play position: %lu ms", play_pos);
+    ESP_LOGV(TAG, "Play position: %lu ms", (unsigned long)play_pos);
 }
 
 /**
- * @brief Handles incoming AVRCP track metadata attributes from Bluetooth peer.
+ * @brief Handles incoming track metadata attributes from Bluetooth peer.
  * 
  * Allocates a copy of the metadata text string and dispatches it to the processing queue.
  * 
- * @param[in] id AVRCP metadata attribute ID (Title, Artist, Album, Duration).
+ * @param[in] id Metadata attribute ID (Title, Artist, Album, Duration).
  * @param[in] text Pointer to null-terminated metadata text string.
  */
-void avrc_metadata_callback(uint8_t id, const uint8_t *text)
+void media_metadata_callback(uint8_t id, const uint8_t *text)
 {
     if (text == NULL) return;
-    if ((id != ESP_AVRC_MD_ATTR_PLAYING_TIME) && (text[0] == '\0')) return;
+    if ((id != BLE_AUDIO_MD_ATTR_PLAYING_TIME) && (text[0] == '\0')) return;
 
     // Allocate copy of metadata text payload for queue transfer
-    avrcMetadata incMetadata;
+    mediaMetadata incMetadata;
     incMetadata.id = id;
     incMetadata.payload = (uint8_t *)strdup((const char *)text);
 
     if (incMetadata.payload == nullptr) return;
 
-    // Push item to AVRCP metadata processing queue; free memory if queue is full
-    if (xQueueSend(avrcMetadataQueue, &incMetadata, 0) != pdTRUE)
+    // Push item to media metadata processing queue; free memory if queue is full
+    if (xQueueSend(mediaMetadataQueue, &incMetadata, 0) != pdTRUE)
     {
         free(incMetadata.payload);
     }
@@ -319,7 +308,7 @@ void avrc_metadata_callback(uint8_t id, const uint8_t *text)
 /**
  * @brief Callback handler invoked by esPod when host sends iAP playback control commands.
  * 
- * Maps iAP playback commands (Play, Pause, Stop, Next, Prev) directly to Bluetooth A2DPSink methods.
+ * Maps iAP playback commands (Play, Pause, Stop, Next, Prev) directly to BLE Audio sink methods.
  * 
  * @param[in] playCommand Target playback command enum value.
  */
@@ -328,26 +317,26 @@ void playStatusHandler(PB_COMMAND playCommand)
     switch (playCommand)
     {
     case PB_CMD_STOP:
-        a2dp_sink.stop();
-        ESP_LOGD(TAG, "A2DP_STOP");
+        ble_audio_sink_stop();
+        ESP_LOGD(TAG, "BLE_AUDIO_STOP");
         break;
     case PB_CMD_PLAY:
-        a2dp_sink.play();
-        ESP_LOGD(TAG, "A2DP_PLAY");
+        ble_audio_sink_play();
+        ESP_LOGD(TAG, "BLE_AUDIO_PLAY");
         break;
     case PB_CMD_PAUSE:
-        a2dp_sink.pause();
-        ESP_LOGD(TAG, "A2DP_PAUSE");
+        ble_audio_sink_pause();
+        ESP_LOGD(TAG, "BLE_AUDIO_PAUSE");
         break;
     case PB_CMD_PREVIOUS_TRACK:
     case PB_CMD_PREV:
-        a2dp_sink.previous();
-        ESP_LOGD(TAG, "A2DP_PREV");
+        ble_audio_sink_previous();
+        ESP_LOGD(TAG, "BLE_AUDIO_PREV");
         break;
     case PB_CMD_NEXT_TRACK:
     case PB_CMD_NEXT:
-        a2dp_sink.next();
-        ESP_LOGD(TAG, "A2DP_NEXT");
+        ble_audio_sink_next();
+        ESP_LOGD(TAG, "BLE_AUDIO_NEXT");
         break;
     default:
         break;
@@ -363,13 +352,14 @@ void playStatusHandler(PB_COMMAND playCommand)
  * 
  * Orchestrates dual-core initialization (Option B Swapped):
  *   - Core 1: TinyUSB PL2303 driver, esPod handlers, and direct in-memory software bridge task.
- *   - Core 0: AVRCP metadata task and Bluetooth A2DP Sink with AudioTools I2S output.
+ *   - Core 0: Media metadata task and Bluetooth LE Audio Sink subsystem.
  */
 extern "C" void app_main(void)
 {
     // Step 0: Centrally configure subsystem log verbosity
     esp_log_level_set("PL2303_USB", ESP_LOG_DEBUG);
     esp_log_level_set("esPod", ESP_LOG_DEBUG);
+    esp_log_level_set("BLE_AUDIO_SINK", ESP_LOG_DEBUG);
     esp_log_level_set(TAG, ESP_LOG_DEBUG);
 
     ESP_LOGI(TAG, "superPod firmware starting up on ESP32-S31...");
@@ -394,15 +384,15 @@ extern "C" void app_main(void)
     xTaskCreatePinnedToCore(usb_espod_bridge_task, "usb_espod_bridge", CONFIG_USB_ESPOD_BRIDGE_TASK_STACK_SIZE,
                             NULL, CONFIG_USB_ESPOD_BRIDGE_TASK_PRIORITY, NULL, CONFIG_TINYUSB_TASK_CORE);
 
-    // Step 4: Initialize AVRCP task & Bluetooth A2DP Sink on Core 0 (PRO_CPU)
-    if (initializeAVRCTask() != ESP_OK)
+    // Step 4: Initialize Media metadata task on Core 0 (PRO_CPU)
+    if (initializeMediaTask() != ESP_OK)
     {
-        ESP_LOGE(TAG, "AVRC Task init failed");
+        ESP_LOGE(TAG, "Media Task init failed");
         esp_restart();
     }
 
-    // Step 5: Start A2DP Sink audio streaming pipeline
-    initializeA2DPSink();
+    // Step 5: Start BLE Audio Sink subsystem
+    initializeBLEAudioSink();
 
     ESP_LOGI(TAG, "superPod initialization completed. Waiting for Bluetooth peer connection...");
 }
