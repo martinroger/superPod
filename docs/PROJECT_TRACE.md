@@ -151,4 +151,35 @@
   - Updated `sdkconfig.defaults` with `CONFIG_LOG_DEFAULT_LEVEL_INFO=y` and updated `.geminirules` with mandatory `fullclean reconfigure` rule on sdkconfig edits.
   - Verified on hardware: clean, stable 48 kHz stereo music playback via UDA1334A I2S DAC.
 
+### Entry 15: [BLE Audio Migration Phase 4: MCP/MCC, VCP/VCS Volume Renderer & esPod Metadata Bridge]
+- **Date/Time**: 2026-09-03
+- **Branch**: `ble-audio`
+- **User Directives**: Implement Media Control Profile (MCC/MCP), Volume Control Profile (VCP/VCS) Volume Renderer, and esPod metadata queue bridge with high monitor verbosity.
+- **Actions Taken**:
+  - Enabled MCC and VCP Kconfig symbols in `sdkconfig.defaults` (`CONFIG_BT_MCTL`, `CONFIG_BT_MCC`, `CONFIG_BT_VCP_VOL_REND`).
+  - Implemented `components/ble_audio_sink/include/ble_audio_vcp.h` and `components/ble_audio_sink/src/ble_audio_vcp.c` registering VCS Volume Renderer:
+    - Sets initial volume (200/255) and unmuted.
+    - Implemented `state` callback logging volume updates (`>>> VCP VOLUME UPDATED: %u / 255 <<<`).
+    - Implemented software digital PCM volume scaling and mute control (`ble_audio_vcp_apply_volume`), attenuating 16-bit PCM before I2S DMA.
+  - Implemented `components/ble_audio_sink/include/ble_audio_mcc.h` and `components/ble_audio_sink/src/ble_audio_mcc.c` registering Media Control Client (MCC):
+    - Subscribes to peer Media Control Service (MCS) upon ACL connection (`esp_ble_audio_mcc_discover_mcs`).
+    - Handles track title (`read_track_title`), duration (`read_track_duration`), position (`read_track_position`), and track change events (`track_changed_ntf`), forwarding them to `mediaMetadataQueue` for `esPod` display.
+    - Exposes transport controls: Play (`0x01`), Pause (`0x02`), Stop (`0x03`), Next Track (`0x04`), Previous Track (`0x05`).
+  - Wired MCC and VCP into `ble_audio_sink.cpp` facade and `main.cpp`.
+  - Applied software volume attenuation in `ble_audio_decode_task` in `ble_audio_bap.c`.
+  - Verified fullclean reconfigure compilation on ESP-IDF v6.1.0 (`superPod.bin` built cleanly with 0 errors, size `0x19f660`, 46% partition free).
 
+### Entry 16: [BLE Audio Migration Phase 4: TMAP/UMR Integration, Resilient Discovery, and Compile-Time EIR Validation]
+- **Date/Time**: 2026-09-03
+- **Branch**: `ble-audio`
+- **User Directives**: Fix MCS discovery `-61` error, resolve all-or-nothing volume control, enhance metadata retrieval, fix extended advertising visibility, and implement in-code checks that the EIR is sized and composed correctly before compilation.
+- **Actions Taken**:
+  - Identified root causes of MCS discovery failure and phone volume fallback:
+    - Discovery was called prematurely on ACL connect before MTU exchange and GATT service discovery had completed. Chained discovery to `ESP_BLE_AUDIO_GATT_EVENT_GATTC_DISC_CMPL` with automatic retry timer in `ble_audio_mcc.c`.
+    - Android LeAudioService requires Top-Level TMAP (Telephony and Media Audio Profile) with TMAS (`0x1855`) and CAS (`0x1853`) to bind the Volume Control Profile (VCP). Added `CONFIG_BT_TMAP=y` and `esp_ble_audio_tmap_register(ESP_BLE_AUDIO_TMAP_ROLE_UMR)`.
+  - Added Title/Artist intelligent string splitting for streaming services formatting `"Title - Artist"` in Track Title, and mapped player name to Album context.
+  - Implemented strictly packed compile-time structure `ble_audio_eir_fixed_t` in `components/ble_audio_sink/src/ble_audio_gap.c`:
+    - Flags (`0x01`), Appearance (`0x19`), 16-bit Services (`0x02`), TMAS Service Data (`0x16`), CAS Service Data (`0x16`), and ASCS Service Data (`0x16`).
+    - Enforced size and field offsets via `_Static_assert` before compilation: verifies exact 32-byte fixed payload size, field offsets, and total PDU size against Bluetooth 5.0 251-byte maximum.
+    - Added runtime EIR validation loop walking each EIR record and verifying block length >= 1, non-overrun, and exact cumulative length match via `assert()`.
+  - Successfully compiled with `idf.py build` (exit code 0, binary size `0x1a1560`).

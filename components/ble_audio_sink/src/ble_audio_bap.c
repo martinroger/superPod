@@ -18,11 +18,14 @@
 #include "esp_ble_audio_bap_api.h"
 #include "esp_ble_audio_codec_api.h"
 #include "esp_ble_audio_lc3_defs.h"
+#include "esp_ble_audio_tmap_api.h"
 #include "lc3.h"
 
 #include "ble_audio_i2s.h"
 #include "ble_audio_gap.h"
 #include "ble_audio_bap.h"
+#include "ble_audio_vcp.h"
+#include "ble_audio_mcc.h"
 
 static const char *TAG = "BLE_AUDIO_BAP";
 
@@ -202,6 +205,7 @@ static void ble_audio_decode_task(void *arg)
                         s_pcm_stereo[2 * s]     = s_pcm_left[s];
                         s_pcm_stereo[2 * s + 1] = s_pcm_right[s];
                     }
+                    ble_audio_vcp_apply_volume(s_pcm_stereo, num_samples * 2);
                     ble_audio_i2s_write(s_pcm_stereo, num_samples * 2 * sizeof(int16_t), 2);
                 }
             }
@@ -209,6 +213,7 @@ static void ble_audio_decode_task(void *arg)
             else {
                 int ret = lc3_decode(s_sink_streams[idx].dec_left, msg.data, (int)msg.len, LC3_PCM_FORMAT_S16, s_pcm_left, 1);
                 if (ret >= 0) {
+                    ble_audio_vcp_apply_volume(s_pcm_left, num_samples);
                     ble_audio_i2s_write(s_pcm_left, num_samples * sizeof(int16_t), 1);
                 }
             }
@@ -462,6 +467,7 @@ static void iso_gap_app_cb(esp_ble_audio_gap_app_event_t *event)
         ESP_LOGI(TAG, "=====================================================");
         s_is_streaming = false;
         ble_audio_i2s_stop();
+        ble_audio_mcc_on_peer_disconnected(event->acl_disconnect.conn_handle);
         if (s_conn_cb != NULL) {
             s_conn_cb(BLE_AUDIO_CONN_STATE_DISCONNECTED, s_conn_user_data);
         }
@@ -482,9 +488,32 @@ static void iso_gap_app_cb(esp_ble_audio_gap_app_event_t *event)
 
 static void iso_gatt_app_cb(esp_ble_audio_gatt_app_event_t *event)
 {
-    if (event->type == ESP_BLE_AUDIO_GATT_EVENT_GATT_MTU_CHANGE) {
+    switch (event->type) {
+    case ESP_BLE_AUDIO_GATT_EVENT_GATT_MTU_CHANGE:
         ESP_LOGI(TAG, "GATT MTU updated: handle %u mtu %u",
                  event->gatt_mtu_change.conn_handle, event->gatt_mtu_change.mtu);
+        if (event->gatt_mtu_change.mtu >= ESP_BLE_AUDIO_ATT_MTU_MIN) {
+            ESP_LOGI(TAG, "Starting GATT Service Discovery on peer (handle %u)...",
+                     event->gatt_mtu_change.conn_handle);
+            esp_err_t ret = esp_ble_audio_gattc_disc_start(event->gatt_mtu_change.conn_handle);
+            if (ret != ESP_OK) {
+                ESP_LOGW(TAG, "Failed to start GATT discovery: %d", ret);
+            }
+        }
+        break;
+
+    case ESP_BLE_AUDIO_GATT_EVENT_GATTC_DISC_CMPL:
+        ESP_LOGI(TAG, "==================================================");
+        ESP_LOGI(TAG, ">>> GATT SERVICE DISCOVERY COMPLETE: handle %u status %u <<<",
+                 event->gattc_disc_cmpl.conn_handle, event->gattc_disc_cmpl.status);
+        ESP_LOGI(TAG, "==================================================");
+        if (event->gattc_disc_cmpl.status == 0) {
+            ble_audio_mcc_on_peer_connected(event->gattc_disc_cmpl.conn_handle);
+        }
+        break;
+
+    default:
+        break;
     }
 }
 
@@ -603,7 +632,14 @@ esp_err_t ble_audio_bap_init(void)
         return err;
     }
 
-    ESP_LOGI(TAG, "BAP Unicast Sink, PACS, and LC3 Decode Task initialized successfully");
+    /* Step 8: Register TMAP role as UMR (Unicast Media Receiver) */
+    err = esp_ble_audio_tmap_register(ESP_BLE_AUDIO_TMAP_ROLE_UMR);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to register TMAP role: %d", err);
+        return err;
+    }
+
+    ESP_LOGI(TAG, "BAP Unicast Sink, PACS, TMAP UMR, and LC3 Decode Task initialized successfully");
     return ESP_OK;
 }
 

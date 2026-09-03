@@ -157,6 +157,21 @@ void ble_audio_sink_next(void);
  */
 void ble_audio_sink_previous(void);
 
+/**
+ * @brief Get current volume level (0-255).
+ */
+uint8_t ble_audio_sink_get_volume(void);
+
+/**
+ * @brief Check if audio is currently muted.
+ */
+bool ble_audio_sink_is_muted(void);
+
+/**
+ * @brief Register callback for volume changes.
+ */
+void ble_audio_sink_set_volume_callback(void (*cb)(uint8_t volume, bool muted));
+
 #ifdef __cplusplus
 }
 #endif

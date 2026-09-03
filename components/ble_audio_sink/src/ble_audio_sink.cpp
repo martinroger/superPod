@@ -1,6 +1,6 @@
 /**
  * @file ble_audio_sink.cpp
- * @brief Bluetooth LE Audio Sink Facade Implementation (Phase 3).
+ * @brief Bluetooth LE Audio Sink Facade Implementation (Phase 4).
  */
 
 #include <stdio.h>
@@ -10,6 +10,8 @@
 #include "ble_audio_gap.h"
 #include "ble_audio_i2s.h"
 #include "ble_audio_bap.h"
+#include "ble_audio_vcp.h"
+#include "ble_audio_mcc.h"
 
 static const char *TAG = "BLE_AUDIO_SINK";
 
@@ -53,10 +55,24 @@ esp_err_t ble_audio_sink_init(const ble_audio_sink_config_t *config)
         return ret;
     }
 
-    /* Step 3: Initialize BAP Unicast Sink, PACS & ASCS endpoints (REQ-AUD-1) */
+    /* Step 3: Initialize BAP Unicast Sink, PACS & ASCS endpoints (initializes esp_ble_audio_common_init) */
     ret = ble_audio_bap_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize BAP Unicast Sink: %d", ret);
+        return ret;
+    }
+
+    /* Step 4: Initialize VCP Volume Renderer (REQ-VOL) */
+    ret = ble_audio_vcp_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize VCP Volume Renderer: %d", ret);
+        return ret;
+    }
+
+    /* Step 5: Initialize Media Control Client (REQ-CTRL, REQ-META) */
+    ret = ble_audio_mcc_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize Media Control Client: %d", ret);
         return ret;
     }
 
@@ -65,7 +81,7 @@ esp_err_t ble_audio_sink_init(const ble_audio_sink_config_t *config)
 
 esp_err_t ble_audio_sink_start(void)
 {
-    ESP_LOGI(TAG, "Starting BLE Audio Sink subsystem (Phase 3 BAP & Extended Advertising)...");
+    ESP_LOGI(TAG, "Starting BLE Audio Sink subsystem (Phase 4 BAP, VCP, MCP & Extended Advertising)...");
     esp_err_t ret = ble_audio_bap_start();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start BAP subsystem: %d", ret);
@@ -87,41 +103,64 @@ void ble_audio_sink_set_audio_state_callback(ble_audio_state_cb_t cb, void *user
     s_audio_cb = cb;
     s_audio_user_data = user_data;
     ble_audio_bap_set_audio_state_cb(cb, user_data);
+    ble_audio_mcc_set_state_cb(cb, user_data);
 }
 
 void ble_audio_sink_set_metadata_callback(ble_audio_metadata_cb_t cb)
 {
     s_metadata_cb = cb;
     ble_audio_bap_set_metadata_cb(cb);
+    ble_audio_mcc_set_metadata_cb(cb);
 }
 
 void ble_audio_sink_set_play_pos_callback(ble_audio_play_pos_cb_t cb)
 {
     s_play_pos_cb = cb;
     ble_audio_bap_set_play_pos_cb(cb);
+    ble_audio_mcc_set_play_pos_cb(cb);
 }
 
 void ble_audio_sink_play(void)
 {
-    ESP_LOGD(TAG, "MCP command -> PLAY");
+    ESP_LOGI(TAG, "Transport command -> PLAY");
+    ble_audio_mcc_play();
 }
 
 void ble_audio_sink_pause(void)
 {
-    ESP_LOGD(TAG, "MCP command -> PAUSE");
+    ESP_LOGI(TAG, "Transport command -> PAUSE");
+    ble_audio_mcc_pause();
 }
 
 void ble_audio_sink_stop(void)
 {
-    ESP_LOGD(TAG, "MCP command -> STOP");
+    ESP_LOGI(TAG, "Transport command -> STOP");
+    ble_audio_mcc_stop();
 }
 
 void ble_audio_sink_next(void)
 {
-    ESP_LOGD(TAG, "MCP command -> NEXT_TRACK");
+    ESP_LOGI(TAG, "Transport command -> NEXT_TRACK");
+    ble_audio_mcc_next();
 }
 
 void ble_audio_sink_previous(void)
 {
-    ESP_LOGD(TAG, "MCP command -> PREV_TRACK");
+    ESP_LOGI(TAG, "Transport command -> PREV_TRACK");
+    ble_audio_mcc_previous();
+}
+
+uint8_t ble_audio_sink_get_volume(void)
+{
+    return ble_audio_vcp_get_volume();
+}
+
+bool ble_audio_sink_is_muted(void)
+{
+    return ble_audio_vcp_is_muted();
+}
+
+void ble_audio_sink_set_volume_callback(void (*cb)(uint8_t volume, bool muted))
+{
+    ble_audio_vcp_set_vol_cb(cb);
 }

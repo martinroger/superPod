@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include <assert.h>
+#include <stddef.h>
 #include "esp_log.h"
 #include "esp_err.h"
 #include "nvs_flash.h"
@@ -39,7 +41,7 @@ static uint8_t s_connected_bda[6] = {0};
 static uint8_t s_last_bonded_bda[6] = {0};
 static bool s_has_bonded_bda = false;
 static char s_device_name[32] = "superPod-Audio";
-static uint8_t s_ext_adv_data[64];
+static uint8_t s_ext_adv_data[256];
 static size_t s_ext_adv_data_len = 0;
 
 static ble_audio_conn_state_cb_t s_conn_cb = NULL;
@@ -142,32 +144,100 @@ static void auto_reconnect_timer_callback(void *arg)
 }
 
 /**
- * @brief Builds the BLE connectable extended advertising raw packet.
+ * @brief Strictly packed compile-time structure representing the BLE Audio EIR blocks.
+ * Enforces correct Bluetooth 5.x Extended Advertising AD Structure sizing before compilation.
+ */
+typedef struct __attribute__((packed)) {
+    /* 1. Flags (AD Type 0x01, Len 2) */
+    uint8_t  flags_len;
+    uint8_t  flags_type;
+    uint8_t  flags_val;
+
+    /* 2. Appearance (AD Type 0x19, Len 3) */
+    uint8_t  app_len;
+    uint8_t  app_type;
+    uint16_t app_val;
+
+    /* 3. 16-bit Service UUIDs: ASCS, CAS, TMAS (AD Type 0x02, Len 7) */
+    uint8_t  srv_len;
+    uint8_t  srv_type;
+    uint16_t srv_ascs;
+    uint16_t srv_cas;
+    uint16_t srv_tmas;
+
+    /* 4. TMAS Service Data (AD Type 0x16, Len 5, UUID 0x1855, Role UMR 0x0008) */
+    uint8_t  tmas_len;
+    uint8_t  tmas_type;
+    uint16_t tmas_uuid;
+    uint16_t tmas_role;
+
+    /* 5. CAS Service Data (AD Type 0x16, Len 4, UUID 0x1853, Announcement 0x01) */
+    uint8_t  cas_len;
+    uint8_t  cas_type;
+    uint16_t cas_uuid;
+    uint8_t  cas_announcement;
+
+    /* 6. ASCS Service Data (AD Type 0x16, Len 5, UUID 0x184E, Media Context 0x0004) */
+    uint8_t  ascs_len;
+    uint8_t  ascs_type;
+    uint16_t ascs_uuid;
+    uint16_t ascs_context;
+} ble_audio_eir_fixed_t;
+
+/* --- Compile-Time EIR Verification Assertions --- */
+_Static_assert(sizeof(ble_audio_eir_fixed_t) == 32, "EIR fixed payload size must be exactly 32 bytes");
+_Static_assert(offsetof(ble_audio_eir_fixed_t, flags_len) == 0,  "Flags offset mismatch");
+_Static_assert(offsetof(ble_audio_eir_fixed_t, app_len) == 3,    "Appearance offset mismatch");
+_Static_assert(offsetof(ble_audio_eir_fixed_t, srv_len) == 7,    "Service UUIDs offset mismatch");
+_Static_assert(offsetof(ble_audio_eir_fixed_t, tmas_len) == 15,  "TMAS offset mismatch");
+_Static_assert(offsetof(ble_audio_eir_fixed_t, cas_len) == 21,   "CAS offset mismatch");
+_Static_assert(offsetof(ble_audio_eir_fixed_t, ascs_len) == 26,  "ASCS offset mismatch");
+_Static_assert(sizeof(ble_audio_eir_fixed_t) + 2 + sizeof(s_device_name) <= sizeof(s_ext_adv_data),
+               "Total advertising payload exceeds s_ext_adv_data buffer");
+_Static_assert(sizeof(ble_audio_eir_fixed_t) + 2 + sizeof(s_device_name) <= 251,
+               "Total advertising payload exceeds BLE 5.0 max extended advertising PDU (251 bytes)");
+
+static const ble_audio_eir_fixed_t s_eir_fixed_template = {
+    .flags_len         = 2,
+    .flags_type        = ESP_BLE_AD_TYPE_FLAG,
+    .flags_val         = ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT,
+
+    .app_len           = 3,
+    .app_type          = ESP_BLE_AD_TYPE_APPEARANCE,
+    .app_val           = 0x0842, // Audio Sink / Standalone Speaker (Little-endian on RISC-V)
+
+    .srv_len           = 7,
+    .srv_type          = ESP_BLE_AD_TYPE_16SRV_PART,
+    .srv_ascs          = 0x184E,
+    .srv_cas           = 0x1853,
+    .srv_tmas          = 0x1855,
+
+    .tmas_len          = 5,
+    .tmas_type         = ESP_BLE_AD_TYPE_SERVICE_DATA,
+    .tmas_uuid         = 0x1855,
+    .tmas_role         = 0x0008, // ESP_BLE_AUDIO_TMAP_ROLE_UMR
+
+    .cas_len           = 4,
+    .cas_type          = ESP_BLE_AD_TYPE_SERVICE_DATA,
+    .cas_uuid          = 0x1853,
+    .cas_announcement  = 0x01,   // Targeted Announcement
+
+    .ascs_len          = 5,
+    .ascs_type         = ESP_BLE_AD_TYPE_SERVICE_DATA,
+    .ascs_uuid         = 0x184E,
+    .ascs_context      = (uint16_t)ESP_BLE_AUDIO_CONTEXT_TYPE_MEDIA,
+};
+
+/**
+ * @brief Builds and rigorously validates the BLE Extended Advertising EIR payload.
  */
 static void build_ext_adv_payload(void)
 {
-    size_t offset = 0;
+    // 1. Copy fixed compile-time verified EIR template
+    memcpy(s_ext_adv_data, &s_eir_fixed_template, sizeof(s_eir_fixed_template));
+    size_t offset = sizeof(s_eir_fixed_template);
 
-    // 1. Flags: General Discoverable & BR/EDR not supported
-    s_ext_adv_data[offset++] = 2;
-    s_ext_adv_data[offset++] = ESP_BLE_AD_TYPE_FLAG;
-    s_ext_adv_data[offset++] = ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT;
-
-    // 2. Complete 16-bit Service UUIDs: ASCS (0x184E)
-    s_ext_adv_data[offset++] = 3;
-    s_ext_adv_data[offset++] = ESP_BLE_AD_TYPE_16SRV_CMPL;
-    s_ext_adv_data[offset++] = 0x4E;
-    s_ext_adv_data[offset++] = 0x18;
-
-    // 3. Service Data: Targeted Audio Announcement (0x184E -> Audio Contexts)
-    s_ext_adv_data[offset++] = 5;
-    s_ext_adv_data[offset++] = ESP_BLE_AD_TYPE_SERVICE_DATA;
-    s_ext_adv_data[offset++] = 0x4E;
-    s_ext_adv_data[offset++] = 0x18;
-    s_ext_adv_data[offset++] = (uint8_t)(ESP_BLE_AUDIO_CONTEXT_TYPE_MEDIA & 0xFF);
-    s_ext_adv_data[offset++] = (uint8_t)((ESP_BLE_AUDIO_CONTEXT_TYPE_MEDIA >> 8) & 0xFF);
-
-    // 4. Complete Local Name
+    // 2. Append Complete Local Name
     size_t name_len = strlen(s_device_name);
     if (name_len > 0 && offset + 2 + name_len <= sizeof(s_ext_adv_data)) {
         s_ext_adv_data[offset++] = (uint8_t)(name_len + 1);
@@ -175,8 +245,23 @@ static void build_ext_adv_payload(void)
         memcpy(&s_ext_adv_data[offset], s_device_name, name_len);
         offset += name_len;
     }
-
     s_ext_adv_data_len = offset;
+
+    // 3. In-code validation pass: parse every EIR block and verify framing & bounds
+    size_t cur = 0;
+    size_t record_count = 0;
+    while (cur < s_ext_adv_data_len) {
+        uint8_t rec_len = s_ext_adv_data[cur];
+        assert(rec_len >= 1 && "EIR block length must be at least 1 (for AD Type)");
+        assert(cur + 1 + rec_len <= s_ext_adv_data_len && "EIR block exceeds total payload length");
+        uint8_t ad_type = s_ext_adv_data[cur + 1];
+        ESP_LOGD(TAG, "  EIR Record #%zu: offset=%zu, len=%u, type=0x%02X", record_count++, cur, rec_len, ad_type);
+        cur += (1 + rec_len);
+    }
+    assert(cur == s_ext_adv_data_len && "EIR records do not sum to total advertising payload length");
+
+    ESP_LOGI(TAG, "Extended Advertising payload validated successfully (%zu records, %u bytes)", record_count, (unsigned)s_ext_adv_data_len);
+    ESP_LOG_BUFFER_HEX(TAG, s_ext_adv_data, s_ext_adv_data_len);
 }
 
 /**

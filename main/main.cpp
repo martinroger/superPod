@@ -184,6 +184,9 @@ void initializeBLEAudioSink()
     ble_audio_sink_set_audio_state_callback(audioStateChanged, nullptr);
     ble_audio_sink_set_metadata_callback(media_metadata_callback);
     ble_audio_sink_set_play_pos_callback(media_play_pos_callback);
+    ble_audio_sink_set_volume_callback([](uint8_t volume, bool muted) {
+        ESP_LOGI("SUPERPOD_MAIN", ">>> VCP Volume notification: %u / 255 (Muted: %s) <<<", volume, muted ? "YES" : "NO");
+    });
 
     ESP_ERROR_CHECK(ble_audio_sink_start());
     ESP_LOGI(TAG, "BLE Audio Sink started: %s", CONFIG_BLE_AUDIO_SINK_NAME);
