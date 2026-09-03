@@ -207,7 +207,7 @@ static const ble_audio_eir_fixed_t s_eir_fixed_template = {
     .app_val           = 0x0842, // Audio Sink / Standalone Speaker (Little-endian on RISC-V)
 
     .srv_len           = 7,
-    .srv_type          = ESP_BLE_AD_TYPE_16SRV_PART,
+    .srv_type          = ESP_BLE_AD_TYPE_16SRV_CMPL,
     .srv_ascs          = 0x184E,
     .srv_cas           = 0x1853,
     .srv_tmas          = 0x1855,

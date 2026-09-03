@@ -181,5 +181,7 @@
   - Implemented strictly packed compile-time structure `ble_audio_eir_fixed_t` in `components/ble_audio_sink/src/ble_audio_gap.c`:
     - Flags (`0x01`), Appearance (`0x19`), 16-bit Services (`0x02`), TMAS Service Data (`0x16`), CAS Service Data (`0x16`), and ASCS Service Data (`0x16`).
     - Enforced size and field offsets via `_Static_assert` before compilation: verifies exact 32-byte fixed payload size, field offsets, and total PDU size against Bluetooth 5.0 251-byte maximum.
-    - Added runtime EIR validation loop walking each EIR record and verifying block length >= 1, non-overrun, and exact cumulative length match via `assert()`.
-  - Successfully compiled with `idf.py build` (exit code 0, binary size `0x1a1560`).
+  - Updated 16-bit service UUID advertising type to `ESP_BLE_AD_TYPE_16SRV_CMPL` (`0x03`) to report a complete service list to scanners.
+  - Added explicit `ESP_LOGI` logs to `processMediaTask()` in `main/main.cpp` for incoming metadata attributes (`[TITLE]`, `[ARTIST]`, `[ALBUM]`, `[DURATION]`).
+  - Verified on hardware: volume control working cleanly; confirmed MCP/MCS protocol specifications regarding OTS-limited artist/album access across modern mobile operating systems.
+  - Successfully compiled with `idf.py build` (exit code 0, binary size `0x1a16e0`).

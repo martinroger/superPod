@@ -140,15 +140,19 @@ static void processMediaTask(void *pvParameters)
                 switch (incMetadata.id)
                 {
                 case BLE_AUDIO_MD_ATTR_ALBUM:
+                    ESP_LOGI(TAG, ">>> esPod Metadata [ALBUM]: \"%s\" <<<", (char *)incMetadata.payload);
                     espod.updateAlbumName((char *)incMetadata.payload);
                     break;
                 case BLE_AUDIO_MD_ATTR_ARTIST:
+                    ESP_LOGI(TAG, ">>> esPod Metadata [ARTIST]: \"%s\" <<<", (char *)incMetadata.payload);
                     espod.updateArtistName((char *)incMetadata.payload);
                     break;
                 case BLE_AUDIO_MD_ATTR_TITLE:
+                    ESP_LOGI(TAG, ">>> esPod Metadata [TITLE]: \"%s\" <<<", (char *)incMetadata.payload);
                     espod.updateTrackTitle((char *)incMetadata.payload);
                     break;
                 case BLE_AUDIO_MD_ATTR_PLAYING_TIME:
+                    ESP_LOGI(TAG, ">>> esPod Metadata [DURATION]: %s ms <<<", (char *)incMetadata.payload);
                     espod.updateTrackDuration((uint32_t)atoi((char *)incMetadata.payload));
                     break;
                 }
