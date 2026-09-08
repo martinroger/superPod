@@ -198,17 +198,16 @@ esp_err_t init_bridge_control_pins(void)
 /// @brief Sends line status to the USB Host over Interrupt Endpoint 0x81
 void pl2303_send_status(bool DCD_state, bool CTS_state, bool DSR_state, bool RI_state)
 {
-    uint8_t status[9] = {0};
+    static uint8_t status[9] = {0};
     uint8_t final_status = 0;
     final_status |= (DCD_state ? 0x01 : 0x00);
     final_status |= (DSR_state ? 0x02 : 0x00);
     final_status |= (RI_state ? 0x08 : 0x00);
     final_status |= (CTS_state ? 0x80 : 0x00);
     status[8] = final_status;
-    if (tud_vendor_mounted())
+    if (tud_vendor_mounted() && !usbd_edpt_busy(0, CONFIG_EP_VENDOR_IRQ))
     {
-        tud_vendor_write(status, sizeof(status));
-        tud_vendor_write_flush();
+        usbd_edpt_xfer(0, CONFIG_EP_VENDOR_IRQ, status, sizeof(status), false);
     }
     ESP_LOGD(TAG, "Sent PL2303 status: %02X", status[8]);
 }
