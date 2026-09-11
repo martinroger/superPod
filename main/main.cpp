@@ -88,37 +88,6 @@ static void usb_tx_handler(const uint8_t *data, size_t len)
     pl2303_usb_write_bytes(data, (uint32_t)len);
 }
 
-/**
- * @brief FreeRTOS task bridging USB Bulk OUT data directly to espod raw ringbuffer using event notifications.
- * 
- * @param pvParameters Unused.
- */
-static void usb_espod_bridge_task(void *pvParameters)
-{
-    uint8_t usb_rx_buf[512];
-
-    // Register current task handle to receive TinyUSB Bulk OUT receive notifications
-    pl2303_usb_set_rx_task_handle(xTaskGetCurrentTaskHandle());
-
-    while (1)
-    {
-        // Wait for event notification from TinyUSB Bulk OUT callback (100ms safety timeout)
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
-
-        // Drain all available raw bytes from TinyUSB Bulk OUT endpoint
-        while (1)
-        {
-            uint32_t rx_bytes = pl2303_usb_read_bytes(usb_rx_buf, sizeof(usb_rx_buf));
-            if (rx_bytes == 0)
-            {
-                break;
-            }
-            ESP_LOGD(TAG, "USB -> espod: %lu bytes", rx_bytes);
-            espod.processRawBuffer(usb_rx_buf, rx_bytes);
-        }
-    }
-}
-
 #pragma endregion
 
 #pragma region AVRCP Queue Processing Task
@@ -336,9 +305,9 @@ extern "C" void app_main(void)
     espod.resetState();
     espod.disabled = true;
 
-    // Step 3: Start USB <-> espod bridge task on Core 1 (APP_CPU)
-    xTaskCreatePinnedToCore(usb_espod_bridge_task, "usb_espod_bridge", CONFIG_USB_ESPOD_BRIDGE_TASK_STACK_SIZE,
-                            NULL, CONFIG_USB_ESPOD_BRIDGE_TASK_PRIORITY, NULL, CONFIG_TINYUSB_TASK_CORE);
+    // Step 3: Attach direct USB RX handler and register espod _rxTask handle for TinyUSB events
+    espod.attachRxHandler(pl2303_usb_read_bytes);
+    pl2303_usb_set_rx_task_handle(espod.getRxTaskHandle());
 
     // Step 4: Initialize AVRCP task & Bluetooth A2DP Sink on Core 0 (Option B Swapped)
     if (initializeAVRCTask() != ESP_OK)
