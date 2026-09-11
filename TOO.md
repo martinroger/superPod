@@ -1,6 +1,6 @@
 # superPod Theory of Operation (TOO), Use Cases & Event Sequences
 
-This document details the logical event sequences, FreeRTOS task interactions, error recovery mechanisms, communication timeout guards, and CPU priority race condition analysis for the unified **`superPod`** firmware running on the **ESP32-S31** with native local component `bt_a2dp_sink`.
+This document details the logical event sequences, FreeRTOS task interactions, error recovery mechanisms, communication timeout guards, and CPU priority race condition analysis for the unified **`superPod`** firmware running on the **ESP32-S31** with `AudioTools` & `BluetoothA2DPSink`.
 
 ---
 
@@ -22,7 +22,7 @@ This document details the logical event sequences, FreeRTOS task interactions, e
    - Because `espod.disabled` is `true`, non-discovery commands receive an acknowledgment or are ignored safely. Ringbuffers do not overflow, and no unhandled exceptions occur.
 3. **Bluetooth Connection Established**:
    - Bluetooth peer pairs and connects. `connectionStateChanged` receives `ESP_A2D_CONNECTION_STATE_CONNECTED`.
-   - Sets `espod.disabled = false` and invokes `a2dp_sink.play()`. Full iAP control and metadata synchronization activate.
+   - Sets `espod.disabled = false` and invokes `bt_a2dp_sink_play()`. Full iAP control and metadata synchronization activate.
 
 ```mermaid
 sequenceDiagram
@@ -34,7 +34,7 @@ sequenceDiagram
 
     Note over Core1,Core0: app_main Initialization
     Core1->>Core1: pl2303_usb_init(), attachTxHandler(), attachRxHandler() & set_rx_task_handle()
-    Core0->>Core0: initializeAVRCTask() & initializeA2DPSink() (a2dp_sink.start)
+    Core0->>Core0: initializeAVRCTask() & initializeA2DPSink() (bt_a2dp_sink_init)
     Note over Core0: Waiting for Bluetooth Peer
 
     USBHost->>Core1: iAP Packets over Bulk OUT (0x02)
@@ -270,4 +270,3 @@ The following table summarizes all hardware, protocol, and FreeRTOS queue timeou
 - [Project Trace & Implementation Matrix](docs/PROJECT_TRACE.md)
 - [esPod Component Documentation](components/espod/README.md)
 - [PL2303 USB Transceiver Documentation](components/pl2303_usb/README.md)
-- [BT A2DP Sink Component Documentation](components/bt_a2dp_sink/README.md)
