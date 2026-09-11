@@ -51,7 +51,7 @@
 #define RX_TASK_STACK_SIZE 4096
 #endif
 #ifndef RX_TASK_PRIORITY
-#define RX_TASK_PRIORITY 2
+#define RX_TASK_PRIORITY 10
 #endif
 #ifndef RX_TASK_INTERVAL_MS
 #define RX_TASK_INTERVAL_MS 5

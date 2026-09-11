@@ -99,6 +99,15 @@ esPod::~esPod()
     }
 }
 
+void esPod::resetAccumulator()
+{
+    _rxIncomplete = false;
+    _accPrevByte = 0x00;
+    _accExpectedLen = 0;
+    _accCursor = 0;
+    ESP_LOGD(TAG, "Accumulator reset");
+}
+
 void esPod::resetState()
 {
     stopTimer(_pendingTimer_0x00);
@@ -114,6 +123,9 @@ void esPod::resetState()
     playPosition = 0;
     currentTrackIndex = 0;
     trackListPosition = 0;
+
+    // Reset stream accumulator
+    resetAccumulator();
 
     // Flush any pending TX queue items and return buffers to free pool
     aapCommand tempCmd;
@@ -150,24 +162,101 @@ void esPod::attachTxHandler(rawTxHandler_t txHandler)
     ESP_LOGI(TAG, "rawTxHandler attached");
 }
 
+void esPod::attachRxHandler(rawRxHandler_t rxHandler)
+{
+    // Save pointer to external raw transport receive function (e.g., TinyUSB PL2303 read)
+    _rawRxHandler = rxHandler;
+    ESP_LOGI(TAG, "rawRxHandler attached");
+}
+
 #pragma endregion
 
 #pragma region Direct Raw Ingestion API
 
-/// @brief Direct In-Memory Raw iAP Packet Processing (bypasses UART in USB Single-MCU Mode)
+/// @brief Direct In-Memory Raw iAP Packet Stream Accumulator (processes arbitrary chunk sizes: 1-byte or multi-byte)
 size_t esPod::processRawBuffer(const uint8_t *data, size_t len)
 {
-    if (disabled || data == nullptr || len == 0 || _cmdRingBuffer == nullptr)
+    if (data == nullptr || len == 0 || _cmdRingBuffer == nullptr)
         return 0;
 
-    BaseType_t ret = xRingbufferSend(_cmdRingBuffer, (void *)data, len, pdMS_TO_TICKS(10));
-    if (ret != pdTRUE)
+    size_t processedBytes = 0;
+
+    for (size_t i = 0; i < len; i++)
     {
-        ESP_LOGW(TAG, "cmdRingBuffer full, dropping %d raw bytes", (int)len);
-        return 0;
+        uint8_t incByte = data[i];
+        processedBytes++;
+
+        // State 1: Hunting for preamble (0xFF 0x55)
+        if (!_rxIncomplete)
+        {
+            if (_accPrevByte == 0xFF && incByte == 0x55)
+            {
+                _rxIncomplete = true;
+                _accCursor = 0;
+                _accExpectedLen = 0;
+                _accBuffer[0] = 0xFF;
+                _accBuffer[1] = 0x55;
+                _accCursor = 2; // Position for length byte
+                ESP_LOGD(TAG, "Accumulator synced on preamble 0xFF 0x55");
+            }
+            // Retain consecutive 0xFFs (handles 0xFF 0xFF 0x55 sequences cleanly)
+            _accPrevByte = incByte;
+        }
+        // State 2: Mid-packet capture
+        else
+        {
+            // Expected length byte is at cursor position 2
+            if (_accCursor == 2)
+            {
+                _accExpectedLen = incByte;
+                if (_accExpectedLen == 0 || _accExpectedLen > (MAX_PACKET_SIZE - 4))
+                {
+                    ESP_LOGW(TAG, "Accumulator invalid length byte: %lu, discarding", (unsigned long)_accExpectedLen);
+                    resetAccumulator();
+                    _accPrevByte = incByte;
+                    continue;
+                }
+                _accBuffer[_accCursor++] = incByte;
+            }
+            else
+            {
+                _accBuffer[_accCursor++] = incByte;
+
+                // Check if we have received the full frame: 2 (preamble) + 1 (len) + payloadLen + 1 (checksum)
+                if (_accCursor == (size_t)(3 + _accExpectedLen + 1))
+                {
+                    _rxIncomplete = false;
+
+                    // Verify checksum: _checksum computes 0x100 - sum(length + payload)
+                    uint8_t calcChecksum = _checksum(&_accBuffer[3], _accExpectedLen);
+                    uint8_t rxChecksum = incByte;
+
+                    if (calcChecksum == rxChecksum)
+                    {
+                        // Verified complete packet -> push entire frame into _cmdRingBuffer
+                        BaseType_t ret = xRingbufferSend(_cmdRingBuffer, (void *)_accBuffer, _accCursor, pdMS_TO_TICKS(10));
+                        if (ret != pdTRUE)
+                        {
+                            ESP_LOGW(TAG, "cmdRingBuffer full, dropping %u byte packet", (unsigned int)_accCursor);
+                        }
+                        else
+                        {
+                            ESP_LOGD(TAG, "Assembled iAP frame (%u bytes) queued to ringbuffer", (unsigned int)_accCursor);
+                        }
+                    }
+                    else
+                    {
+                        ESP_LOGW(TAG, "Accumulator checksum error: calc 0x%02X vs rx 0x%02X, discarding", calcChecksum, rxChecksum);
+                    }
+
+                    resetAccumulator();
+                }
+            }
+            _accPrevByte = incByte;
+        }
     }
-    ESP_LOGD(TAG, "processRawBuffer: queued %u bytes into ringbuffer", (unsigned int)len);
-    return len;
+
+    return processedBytes;
 }
 
 #pragma endregion
@@ -348,22 +437,75 @@ void esPod::_rxTask(void *pvParameters)
 {
     esPod *esp = (esPod *)pvParameters;
     uint8_t rxBuf[MAX_PACKET_SIZE];
+    bool serialTimedOut = false;
 
     while (1)
     {
-        // Polled UART hardware ingestion task (active when hardware UART RX/TX pins are assigned)
-        if (esp->_rxPin >= 0 && esp->_txPin >= 0 && uart_is_driver_installed(esp->_uartPort))
+        // Dynamic wait time based on packet ingestion state:
+        // - If an incomplete frame is buffered in accumulator: wait up to INTERBYTE_TIMEOUT (500 ms)
+        // - Else if serial idle timeout already triggered and debounced: wait indefinitely (portMAX_DELAY)
+        // - Else: wait up to SERIAL_TIMEOUT (8000 ms)
+        TickType_t waitTime = esp->_rxIncomplete
+            ? pdMS_TO_TICKS(INTERBYTE_TIMEOUT)
+            : (serialTimedOut ? portMAX_DELAY : pdMS_TO_TICKS(SERIAL_TIMEOUT));
+
+        // Mode 1: External Direct-Memory Transport (e.g. TinyUSB Bulk OUT via attachRxHandler)
+        if (esp->_rawRxHandler != nullptr)
         {
-            int rxLen = uart_read_bytes(esp->_uartPort, rxBuf, sizeof(rxBuf), pdMS_TO_TICKS(10));
+            if (ulTaskNotifyTake(pdTRUE, waitTime) != 0)
+            {
+                serialTimedOut = false;
+                while (1)
+                {
+                    uint32_t rxBytes = esp->_rawRxHandler(rxBuf, sizeof(rxBuf));
+                    if (rxBytes == 0) break;
+                    esp->processRawBuffer(rxBuf, rxBytes);
+                }
+            }
+            else
+            {
+                // Timeout fired on lack of notification
+                if (esp->_rxIncomplete)
+                {
+                    ESP_LOGW(TAG, "Accumulator incomplete packet timeout (%u ms), discarding partial frame", (unsigned int)INTERBYTE_TIMEOUT);
+                    esp->resetAccumulator();
+                }
+                else if (!serialTimedOut)
+                {
+                    ESP_LOGW(TAG, "Serial idle timeout (%u ms), resetting esPod state machine", (unsigned int)SERIAL_TIMEOUT);
+                    esp->resetState();
+                    serialTimedOut = true;
+                }
+            }
+        }
+        // Mode 2: Hardware UART mode (when physical UART pins are assigned)
+        else if (esp->_rxPin >= 0 && esp->_txPin >= 0 && uart_is_driver_installed(esp->_uartPort))
+        {
+            int rxLen = uart_read_bytes(esp->_uartPort, rxBuf, sizeof(rxBuf), waitTime);
             if (rxLen > 0)
             {
-                esp->processRawBuffer(rxBuf, rxLen);
+                serialTimedOut = false;
+                esp->processRawBuffer(rxBuf, (size_t)rxLen);
+            }
+            else
+            {
+                if (esp->_rxIncomplete)
+                {
+                    ESP_LOGW(TAG, "Packet incomplete, discarding");
+                    esp->resetAccumulator();
+                }
+                else if (!serialTimedOut)
+                {
+                    ESP_LOGW(TAG, "No activity in %lu ms, resetting RX state", (unsigned long)SERIAL_TIMEOUT);
+                    esp->resetState();
+                    serialTimedOut = true;
+                }
             }
         }
         else
         {
-            // Yield CPU when running in direct USB single-MCU mode without physical UART pins
-            vTaskDelay(pdMS_TO_TICKS(10));
+            // Yield CPU if no transport is configured
+            vTaskDelay(pdMS_TO_TICKS(50));
         }
     }
 }
