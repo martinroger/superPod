@@ -16,15 +16,33 @@
 
 ### Core Control & Handlers
 - `void resetState()`
-  - Resets internal state machine variables, clears track indices, cancels pending timers.
+  - Resets internal state machine variables, clears track indices, cancels pending timers, and resets the accumulator.
+- `void resetAccumulator()`
+  - Resets the byte stream accumulator state, clearing any partially assembled packet buffer and returning to `0xFF 0x55` preamble sync hunt mode.
+- `bool isRxIncomplete() const`
+  - Returns `true` if the accumulator has synced on a preamble and is actively assembling mid-packet bytes; returns `false` if idle/waiting for preamble.
 - `void attachPlayControlHandler(playStatusHandler_t playHandler)`
   - `@param[in] playHandler Pointer to playback controller callback function.`
 - `void attachTxHandler(rawTxHandler_t txHandler)`
   - `@param[in] txHandler Pointer to raw transport transmit callback function.`
+- `void attachRxHandler(rawRxHandler_t rxHandler)`
+  - `@param[in] rxHandler Pointer to raw transport receive callback function (e.g. pl2303_usb_read_bytes).`
+  - When attached, `_rxTask` uses this callback to ingest bytes directly into `processRawBuffer()`.
+- `TaskHandle_t getRxTaskHandle() const`
+  - Returns FreeRTOS task handle for `_rxTask`. Used by transports (e.g. TinyUSB callback `tud_vendor_rx_cb`) to wake `_rxTask` via `xTaskNotifyGive()`.
+- `RingbufHandle_t getCmdRingBuffer() const`
+  - Diagnostic getter returning internal command ringbuffer handle.
+- `size_t getAccumulatorCursor() const`
+  - Diagnostic getter returning current accumulator cursor position.
+- `size_t getAccumulatorExpectedLen() const`
+  - Diagnostic getter returning expected payload length of packet under assembly.
 - `size_t processRawBuffer(const uint8_t *data, size_t len)`
+  - Ingests arbitrary chunk sizes (1-byte or multi-byte) from USB/UART transport.
+  - Reassembles fragmented iAP frames, handles multi-`0xFF` sync headers, validates length and two's complement checksums.
+  - Automatically enqueues verified complete frames to `_cmdRingBuffer`.
   - `@param[in] data Pointer to raw iAP byte buffer.`
   - `@param[in] len Length of data in bytes.`
-  - `@return size_t Number of bytes successfully pushed to ringbuffer.`
+  - `@return size_t Number of bytes successfully processed.`
 
 ### Metadata & State Update Methods
 - `void play(bool noLoop = false)`
