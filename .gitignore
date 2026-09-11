@@ -83,4 +83,6 @@ Desktop.ini
 .devcontainer/*
 dependencies.lock
 /partition_table/*
+tests/bin/
+scratch/
 
