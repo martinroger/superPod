@@ -46,6 +46,9 @@ public:
     /// @brief External callback function type for sending raw outbound iAP frame bytes over custom transport (e.g. TinyUSB PL2303)
     typedef void rawTxHandler_t(const uint8_t *data, size_t len);
 
+    /// @brief External callback function type for reading raw inbound bytes from custom transport (e.g. TinyUSB PL2303 Bulk OUT)
+    typedef uint32_t (*rawRxHandler_t)(uint8_t *buf, uint32_t maxLen);
+
     // State variables
     bool extendedInterfaceModeActive = false; // Indicates extended interface mode is active (Lingo 0x04)
     bool disabled = true;                     // Disables parsing while starting up or disconnected
@@ -114,6 +117,20 @@ public:
     void attachTxHandler(rawTxHandler_t txHandler);
 
     /**
+     * @brief Attaches external raw transport RX callback function to read inbound iAP frames (e.g. from TinyUSB Bulk OUT).
+     * 
+     * @param[in] rxHandler Pointer to rawRxHandler_t callback function.
+     */
+    void attachRxHandler(rawRxHandler_t rxHandler);
+
+    /**
+     * @brief Returns the FreeRTOS TaskHandle for the RX ingestion task.
+     * 
+     * Useful for binding event notifications (e.g. tud_vendor_rx_cb -> xTaskNotifyGive).
+     */
+    TaskHandle_t getRxTaskHandle() const { return _rxTaskHandle; }
+
+    /**
      * @brief Direct Raw iAP Message Processing API.
      * 
      * Ingestion entry point for receiving raw Apple Accessory Protocol packets directly from
@@ -124,6 +141,33 @@ public:
      * @return size_t Number of bytes successfully pushed to processing queue.
      */
     size_t processRawBuffer(const uint8_t *data, size_t len);
+
+    /**
+     * @brief Returns whether the stream accumulator is currently waiting for remaining packet bytes.
+     * 
+     * @return true if mid-packet (preamble received, awaiting remaining bytes), false otherwise.
+     */
+    bool isRxIncomplete() const { return _rxIncomplete; }
+
+    /**
+     * @brief Resets stream accumulator state to hunt for a new preamble (0xFF 0x55).
+     */
+    void resetAccumulator();
+
+    /**
+     * @brief Returns the FreeRTOS Ringbuffer handle for command reception.
+     */
+    RingbufHandle_t getCmdRingBuffer() const { return _cmdRingBuffer; }
+
+    /**
+     * @brief Returns the current byte cursor within the stream accumulator.
+     */
+    uint32_t getAccumulatorCursor() const { return _accCursor; }
+
+    /**
+     * @brief Returns the expected packet payload length currently being accumulated.
+     */
+    uint32_t getAccumulatorExpectedLen() const { return _accExpectedLen; }
 
     /**
      * @brief Updates playback engine state to PLAYING.
@@ -237,6 +281,10 @@ private:
     void _processPacket(const uint8_t *byteArray, size_t len);
 
     bool _rxIncomplete = false;
+    uint8_t _accPrevByte = 0x00;
+    uint32_t _accExpectedLen = 0;
+    uint32_t _accCursor = 0;
+    uint8_t _accBuffer[MAX_PACKET_SIZE] = {0};
 
     // Device metadata
     const char *_name = ESPIPOD_NAME;
@@ -247,4 +295,5 @@ private:
 
     playStatusHandler_t *_playStatusHandler = nullptr;
     rawTxHandler_t *_rawTxHandler = nullptr;
+    rawRxHandler_t _rawRxHandler = nullptr;
 };

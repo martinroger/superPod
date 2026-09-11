@@ -10,8 +10,32 @@
 ## Subsystem Architecture
 
 - **Core Affinity**: Processing tasks run on **Core 1 (APP_CPU)** (`CONFIG_ESPOD_TASK_CORE = 1`).
-- **Direct Raw Ingestion**: In single-MCU mode, incoming USB Bulk OUT packets bypass physical UART pins and enter directly via `processRawBuffer()`.
+- **Universal Ingestion Task (`_rxTask`) & Transport Abstraction**:
+  - Supports physical UART or direct-memory transports (such as USB Bulk OUT endpoints via `attachRxHandler()`).
+  - Directly receives FreeRTOS task notifications (`pl2303_usb_set_rx_task_handle(espod.getRxTaskHandle())`) triggered by `tud_vendor_rx_cb()`, eliminating intermediate bridge tasks and saving 4 KB of RAM.
+  - Ingests incoming data chunks directly into `processRawBuffer()`.
+- **Stream Accumulator State Machine**:
+  - Reassembles fragmented frames (including 1-byte transfers), validates preambles (`0xFF 0x55`, safely absorbing multi-`0xFF` padding), length, and two's complement checksums, safely dropping corrupted packets.
+- **Dynamic Timeout & Debounce Latch**:
+  - Enforces a **500 ms inter-byte timeout** (`INTERBYTE_TIMEOUT`) when an incomplete frame is mid-assembly (`_rxIncomplete == true`).
+  - Enforces an **8000 ms serial idle timeout** (`SERIAL_TIMEOUT`) with a debounce latch (`serialTimedOut`), transitioning to `portMAX_DELAY` to prevent repeated state machine resetting.
 - **Transport Outbound Callback**: Generated response frames are passed to an attached transport callback (`attachTxHandler()`) which forwards bytes to TinyUSB Bulk IN endpoint (`pl2303_usb_write_bytes`).
+
+---
+
+## Component Regression Testing
+
+`espod` includes a self-contained, cross-platform host regression test suite located in `components/espod/test/`.
+- Tests compile directly against the genuine production C++ sources (`src/esPod.cpp`, `L0x00.cpp`, `L0x03.cpp`, `L0x04.cpp`) using host `g++` or `clang++` with lightweight FreeRTOS/ESP-IDF mock headers.
+- **To run the component tests directly:**
+  ```bash
+  cd components/espod/test
+  ./run_tests.sh
+  ```
+- **To run from project root:**
+  ```bash
+  ./tests/run_tests.sh
+  ```
 
 ---
 

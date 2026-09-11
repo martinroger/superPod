@@ -1,0 +1,21 @@
+# Build outputs and intermediate files
+build/
+bin/
+test/bin/
+*.o
+*.a
+*.so
+*.dylib
+*.bin
+*.elf
+*.map
+*.d
+
+# Test logs
+*.log
+
+# Editor and OS files
+.DS_Store
+*~
+*.swp
+
