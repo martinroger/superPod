@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# superPod Git pre-commit hook
+# Runs regression test suite before allowing commit
+
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$REPO_ROOT"
+
+echo "================================================================"
+echo " [Git Hook: pre-commit] Running superPod regression tests..."
+echo "================================================================"
+
+if [ -f "./tests/run_tests.sh" ]; then
+    ./tests/run_tests.sh
+    TEST_EXIT=$?
+    if [ $TEST_EXIT -ne 0 ]; then
+        echo ""
+        echo "❌ [Git Hook: pre-commit] Regression tests failed!"
+        echo "   Commit aborted. Please fix test failures before committing."
+        echo "   (To bypass in an emergency, use: git commit --no-verify)"
+        exit 1
+    fi
+else
+    echo "⚠️  [Git Hook: pre-commit] Warning: tests/run_tests.sh not found. Skipping."
+fi
+
+echo "✔ [Git Hook: pre-commit] All regression tests passed. Proceeding with commit."
+exit 0
+
