@@ -470,7 +470,6 @@ uint32_t pl2303_usb_read_bytes(uint8_t *buffer, uint32_t bufsize)
 {
     if (tud_vendor_available())
     {
-        return tud_vendor_read(buffer, bufsize);
         uint32_t read_len = tud_vendor_read(buffer, bufsize);
         if (read_len > 0)
         {
