@@ -96,3 +96,46 @@
   - Enforced `disabled` state protection in `esPod` tasks and drained queues on `resetState()`.
   - Fixed iAP checksum calculation in `esPod::_checksum()` to include the packet length byte.
   - Enabled compile-time Debug logging (`CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y`) with runtime default at `WARN` (`CONFIG_LOG_DEFAULT_LEVEL_WARN=y`), centrally configuring `PL2303_USB`, `esPod`, and `SUPERPOD_MAIN` to `ESP_LOG_DEBUG` in `main.cpp`.
+
+### Entry 11: [USB Packet Dissection, Accumulator State Machine & Dynamic Timeouts]
+- **Date/Time**: 2026-09-11
+- **Branch**: `no-audiotools`
+- **Actions Taken**:
+  - Analyzed USB protocol capture logs (`PL2303 logs/superPod-wontConnect.pcapng` vs working `PL2303 logs/ipodWorking.pcapng`) using Wireshark and `wiremcp`.
+  - Identified root cause of handshake stall: Mini Cooper head unit transmits iAP packets fragmented across 1-byte USB bulk OUT transfers, whereas `ipodesp32`'s legacy `processRawBuffer` expected full packets per read.
+  - Fixed premature dead `return` statement in `components/pl2303_usb/src/pl2303_usb.cpp` (`pl2303_usb_read_bytes`).
+  - Implemented the byte-stream packet accumulator directly within `components/espod` (`esPod::processRawBuffer`):
+    - Hunt mode scans for preamble `0xFF 0x55`, safely absorbing arbitrary leading `0xFF` bytes (`0xFF 0xFF 0x55`).
+    - Capture mode extracts length, checks validity, accumulates payload and checksum, computes two's complement checksum (`0x100 - sum(length + payload)`), and queues verified frames to `_cmdRingBuffer`.
+    - Added `resetAccumulator()` and `isRxIncomplete()` API methods to `esPod`.
+  - Implemented dynamic wait ticks in `usb_espod_bridge_task` (`main/main.cpp`):
+    - Uses `isRxIncomplete()` to dynamically set `ulTaskNotifyTake` wait ticks to `500 ms` (`INTERBYTE_TIMEOUT`) when mid-packet.
+    - If timed out mid-packet, calls `resetAccumulator()` and logs a discard warning.
+    - Uses `8000 ms` (`SERIAL_TIMEOUT`) when idle. If idle timeout triggers, calls `resetState()`, logs a warning once, and latches `serialTimedOut = true` (switching wait to `portMAX_DELAY`) until new USB activity wakes the task and clears the latch.
+  - Authored Generative UI interactive artifacts:
+    - `usb_trace_analysis.html`: PCAP trace comparison, endpoint traffic breakdown, and SVG sequence diagram of Mini Cooper handshake.
+    - `process_flow_comparison.html`: Side-by-side architecture comparison between `ipodesp32` (UART) and `superPod` (USB) ingestion flows.
+  - Created standalone unit test harness verifying 1-byte packet assembly, duplicate sync bytes, checksum verification, and error recovery.
+  - Updated all documentation (`TOO.md`, `components/espod/README.md`, `components/espod/docs/TOO.md`, `components/espod/docs/API.md`, `docs/REQUIREMENTS.md`, and `docs/PROJECT_TRACE.md`) with visual Mermaid flowcharts.
+
+### Entry 12: [Universal esPod Ingestion, Bridge Task Elimination & Component Host Testing]
+- **Date/Time**: 2026-09-11
+- **Branch**: `no-audiotools`
+- **Actions Taken**:
+  - **Universal `esPod::_rxTask` Transport Ingestion**:
+    - Added `rawRxHandler_t` function pointer type, `attachRxHandler()`, and `getRxTaskHandle()` to `esPod.h` and `esPod.cpp`.
+    - Integrated dynamic wait-for-notification (`ulTaskNotifyTake`) directly into `esPod::_rxTask`:
+      - Mid-packet inter-byte timeout (500 ms) automatically calls `resetAccumulator()` when stalled mid-frame.
+      - Serial idle timeout (8000 ms) resets state machine and latches `serialTimedOut = true` (switching wait to `portMAX_DELAY` until new traffic wakes the task).
+    - Attached USB transport callback directly: `espod.attachRxHandler(pl2303_usb_read_bytes)` and `pl2303_usb_set_rx_task_handle(espod.getRxTaskHandle())`.
+  - **Eliminated Bridge Task & Freed 4 KB Stack**:
+    - Removed `usb_espod_bridge_task` from `main/main.cpp` and deleted its Kconfig parameters (`CONFIG_USB_ESPOD_BRIDGE_TASK_PRIORITY` and `CONFIG_USB_ESPOD_BRIDGE_TASK_STACK_SIZE`), saving 4,096 bytes of task stack allocation.
+  - **Relocated & Production-Source Host Test Suite**:
+    - Built self-contained component test environment in `components/espod/test/` with mock ESP-IDF/FreeRTOS headers (`mock_idf/`).
+    - Compiles directly against real production C++ sources (`components/espod/src/esPod.cpp`, `L0x00.cpp`, `L0x03.cpp`, `L0x04.cpp`) without mocks or duplicate code.
+    - Verified 9 test suites covering 1-byte streaming, multi-packet contiguous streams, checksum validation, timeout reset, invalid length validation, mixed consolidated stream bursts, preamble split across burst boundaries, random chunk stress testing, and inter-packet garbage tolerance.
+    - Added cross-platform component runner (`components/espod/test/run_tests.sh`) and root umbrella runner (`tests/run_tests.sh`).
+  - **Documentation & Build Verification**:
+    - Updated `TOO.md`, `components/espod/README.md`, `components/espod/docs/API.md`, and `components/espod/docs/TOO.md`.
+    - Rebuilt firmware with ESP-IDF v6.1 (`eim run "idf.py build" v6.1`).
+
