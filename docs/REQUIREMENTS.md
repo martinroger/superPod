@@ -44,7 +44,7 @@
 
 ## USB Transceiver Subsystem (`pl2303_usb`)
 - **Native USB Driver**: TinyUSB Prolific PL2303 (`0x067B:0x2303`) vendor device emulation running natively on ESP32-S31 USB-OTG.
-- **Inter-Component Data Flow**: Route USB vendor EP data directly to/from `espod`'s direct raw message ringbuffers in internal single-MCU mode. USB RX Bulk OUT events trigger FreeRTOS task notifications (`tud_vendor_rx_cb` -> `xTaskNotifyGive`), eliminating 5ms CPU polling loops.
+- **Inter-Component Data Flow**: Route USB vendor EP data directly to `espod`'s universal ingestion task (`_rxTask`) via `attachRxHandler(pl2303_usb_read_bytes)`. USB RX Bulk OUT events trigger FreeRTOS task notifications (`tud_vendor_rx_cb` -> `xTaskNotifyGive(espod.getRxTaskHandle())`), eliminating bridge tasks and CPU polling loops.
 
 ## Agent Operational Scope & Technical Constraints
 - **Requirement Grilling**: Mandatory 3–5 question interactive interviewing during feature planning.
@@ -59,14 +59,16 @@
 | :--- | :--- | :--- | :--- |
 | **ESP32-S3 Target Verification** | [`sdkconfig.defaults`](../sdkconfig.defaults) | `CONFIG_IDF_TARGET="esp32s31"` | Verified |
 | **ESP-IDF v6.x Execution** | [`../.geminirules`](../.geminirules) | `eim run "idf.py build"` enforced for virtual env | Verified |
-| **Strapping Pin Protection** | [`main/Kconfig.projbuild`](../main/Kconfig.projbuild) | I2S BCLK(27), WS(25), DOUT(26); DTR(5), RTS(6) - None overlap with GPIO 0,3,45,46 | Verified |
 | **Strapping Pin Protection** | [`main/Kconfig.projbuild`](../main/Kconfig.projbuild) | I2S BCLK(27), WS(25), DOUT(26); DTR(-1), RTS(-1) - Zero GPIO conflict | Verified |
-| **Task Stack Floor (>=2048B)** | [`main/main.cpp`](../main/main.cpp) | `usb_espod_bridge_task` (4096B), `processAVRCTask` (4096B) | Verified |
-| **Native A2DP Sink & I2S** | [`components/bt_a2dp_sink`](../components/bt_a2dp_sink) | Native `esp_driver_i2s` and Bluedroid A2DP/AVRCP implementation | Verified |
+| **Task Stack Floor (>=2048B)** | [`main/main.cpp`](../main/main.cpp), [`components/espod`](../components/espod) | `processAVRCTask` (4096B), `espod` tasks (2048-4096B). Bridge task eliminated (4096B saved). | Verified |
+| **A2DP Sink & AudioTools** | [`main/idf_component.yml`](../main/idf_component.yml) | Sourced `pschatzmann/ESP32-A2DP` and `pschatzmann/arduino-audio-tools` manifests | Verified |
 | **USB PL2303 Emulation** | [`components/pl2303_usb`](../components/pl2303_usb) | TinyUSB Prolific PL2303 vendor device emulation with `tud_vendor_rx_cb` notification | Verified |
 | **Host-Adaptive Line Coding** | [`components/pl2303_usb`](../components/pl2303_usb) | In-memory `pl2303_line_coding_t` accepting any host baud/framing with injection API | Verified |
 | **Centralized Debug Logging** | [`main/main.cpp`](../main/main.cpp), [`sdkconfig.defaults`](../sdkconfig.defaults) | `CONFIG_LOG_MAXIMUM_LEVEL=4` (Debug), runtime level set centrally in `app_main` | Verified |
-| **iAP Lingo Engine** | [`components/espod`](../components/espod) | Direct raw iAP message processing via `processRawBuffer` & outbound transport callback `attachTxHandler` | Verified |
+| **iAP Lingo Engine & Direct RX** | [`components/espod`](../components/espod) | Universal `_rxTask` with `attachRxHandler`, direct raw iAP message processing via `processRawBuffer` & outbound transport callback `attachTxHandler` | Verified |
+| **Byte-Stream Frame Accumulator** | [`components/espod`](../components/espod) | Ingests 1-byte to multi-byte chunks, absorbs multi-`0xFF` sync bytes, reassembles frames, verifies checksum, safely discards invalid/corrupt packets | Verified |
+| **Dynamic Wait & Debounce Latch** | [`components/espod/src/esPod.cpp`](../components/espod/src/esPod.cpp) | FreeRTOS `ulTaskNotifyTake` dynamic wait in `_rxTask`: 500ms incomplete packet timeout, 8000ms idle timeout with debounce latch to prevent redundant resets | Verified |
+| **Production-Source Host Tests** | [`components/espod/test`](../components/espod/test), [`tests`](../tests) | Self-contained regression test suite compiled directly against real production C++ sources; 9/9 tests pass on Linux and macOS | Verified |
 
 ## Documentation & Traceability
 - Maintain `docs/REQUIREMENTS.md` with all prompt-derived constraints and architecture rules.
