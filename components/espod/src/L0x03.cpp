@@ -6,14 +6,7 @@
 #include "L0x03.h"
 #include "esPod.h"
 #include "esp_log.h"
-#include "esp_timer.h"
-
 static const char *TAG = "L0x03";
-
-static inline uint32_t get_millis(void)
-{
-    return (uint32_t)(esp_timer_get_time() / 1000ULL);
-}
 
 /// @brief Parses and dispatches incoming Lingo 0x03 commands
 void L0x03::processLingo(esPod *esp, const uint8_t *byteArray, uint32_t len)
@@ -108,7 +101,6 @@ void L0x03::processLingo(esPod *esp, const uint8_t *byteArray, uint32_t len)
             esp->currentTrackIndex = tempTrackIndex;
 
             esp->trackChangeAckPending = cmdID;
-            esp->trackChangeTimestamp = get_millis();
             L0x03::_0x00_iPodAck(esp, iPodAck_CmdPending, cmdID, TRACK_CHANGE_TIMEOUT);
 
             if (esp->_playStatusHandler)
@@ -135,7 +127,6 @@ void L0x03::processLingo(esPod *esp, const uint8_t *byteArray, uint32_t len)
             esp->currentTrackIndex = tempTrackIndex;
 
             esp->trackChangeAckPending = cmdID;
-            esp->trackChangeTimestamp = get_millis();
             L0x03::_0x00_iPodAck(esp, iPodAck_CmdPending, cmdID, TRACK_CHANGE_TIMEOUT);
 
             if (esp->_playStatusHandler)
