@@ -6,6 +6,7 @@
 #include "L0x04.h"
 #include "esPod.h"
 #include "esp_log.h"
+
 static const char *TAG = "L0x04";
 
 /// @brief Parses and dispatches incoming Lingo 0x04 commands
@@ -546,7 +547,7 @@ void L0x04::_0x0D_ReturnIndexedPlayingTrackInfo(esPod *esp, uint8_t trackInfoTyp
 
 void L0x04::_0x0D_ReturnIndexedPlayingTrackInfo(esPod *esp, uint32_t trackDuration_ms)
 {
-    ESP_LOGI(TAG, "Track duration: %lu", trackDuration_ms);
+    ESP_LOGI(TAG, "Track duration: %lu ms", (unsigned long)trackDuration_ms);
     uint8_t txPacket[14] = {
         0x04, 0x00, 0x0D, 0x00,
         0x00, 0x00, 0x00, 0x00,
@@ -584,7 +585,7 @@ void L0x04::_0x19_ReturnNumberCategorizedDBRecords(esPod *esp, uint32_t category
 
 void L0x04::_0x1B_ReturnCategorizedDatabaseRecord(esPod *esp, uint32_t index, char *recordString)
 {
-    ESP_LOGI(TAG, "Database record at index %lu: %s", index, recordString);
+    ESP_LOGI(TAG, "Database record at index %lu : %s", (unsigned long)index, recordString);
     uint8_t txPacket[255] = {0x04, 0x00, 0x1B, 0x00, 0x00, 0x00, 0x00};
     *((uint32_t *)&txPacket[3]) = swap_endian<uint32_t>(index);
     strcpy((char *)&txPacket[7], recordString);
@@ -593,7 +594,7 @@ void L0x04::_0x1B_ReturnCategorizedDatabaseRecord(esPod *esp, uint32_t index, ch
 
 void L0x04::_0x1D_ReturnPlayStatus(esPod *esp, uint32_t position, uint32_t duration, uint8_t playStatusArg)
 {
-    ESP_LOGI(TAG, "Play status 0x%02x at pos %lu / %lu ms", playStatusArg, position, duration);
+    ESP_LOGI(TAG, "Play status 0x%02x at pos. %lu / %lu ms", playStatusArg, (unsigned long)position, (unsigned long)duration);
     uint8_t txPacket[] = {
         0x04, 0x00, 0x1D,
         0x00, 0x00, 0x00, 0x00,
