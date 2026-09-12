@@ -6,6 +6,7 @@
 #include "L0x03.h"
 #include "esPod.h"
 #include "esp_log.h"
+
 static const char *TAG = "L0x03";
 
 /// @brief Parses and dispatches incoming Lingo 0x03 commands
@@ -26,7 +27,8 @@ void L0x03::processLingo(esPod *esp, const uint8_t *byteArray, uint32_t len)
     case L0x03_SetCurrentEQProfileIndex:
     {
         currentEQProfileIndex = swap_endian<uint32_t>(*((uint32_t *)&byteArray[1]));
-        ESP_LOGI(TAG, "CMD: 0x%02x SetCurrentEQProfileIndex 0x%02lx", cmdID, currentEQProfileIndex);
+        ESP_LOGI(TAG, "CMD: 0x%02x SetCurrentEQProfileIndex 0x%02lx", cmdID, (unsigned long)currentEQProfileIndex);
+        (void)currentEQProfileIndex;
         L0x03::_0x00_iPodAck(esp, iPodAck_OK, cmdID);
     }
     break;
@@ -343,7 +345,7 @@ void L0x03::_0x0D_RetiPodStateInfo(esPod *esp)
 
 void L0x03::_0x10_RetPlayStatus(esPod *esp, uint8_t playState, uint32_t trackIndex, uint32_t trackTotMs, uint32_t trackPosMs)
 {
-    ESP_LOGI(TAG, "Play status 0x%02x of index %lu at pos %lu / %lu ms", playState, trackIndex, trackPosMs, trackTotMs);
+    ESP_LOGI(TAG, "Play status 0x%02x of index %lu at pos. %lu / %lu ms", playState, (unsigned long)trackIndex, (unsigned long)trackPosMs, (unsigned long)trackTotMs);
     uint8_t txPacket[] = {
         0x03, 0x10, playState,
         0x00, 0x00, 0x00, 0x00,
@@ -365,7 +367,7 @@ void L0x03::_0x13_RetIndexedPlayingTrackInfo(esPod *esp, uint8_t trackInfoType, 
 
 void L0x03::_0x13_RetIndexedPlayingTrackInfo(esPod *esp, uint32_t trackDuration_ms)
 {
-    ESP_LOGI(TAG, "Track duration: %lu", trackDuration_ms);
+    ESP_LOGI(TAG, "Track duration: %lu ms", (unsigned long)trackDuration_ms);
     uint8_t txPacket[13] = {
         0x03, 0x13, 0x00,
         0x00, 0x00, 0x00, 0x00,
