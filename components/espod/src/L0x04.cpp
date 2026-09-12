@@ -6,14 +6,7 @@
 #include "L0x04.h"
 #include "esPod.h"
 #include "esp_log.h"
-#include "esp_timer.h"
-
 static const char *TAG = "L0x04";
-
-static inline uint32_t get_millis(void)
-{
-    return (uint32_t)(esp_timer_get_time() / 1000ULL);
-}
 
 /// @brief Parses and dispatches incoming Lingo 0x04 commands
 void L0x04::processLingo(esPod *esp, const uint8_t *byteArray, uint32_t len)
@@ -267,7 +260,6 @@ void L0x04::processLingo(esPod *esp, const uint8_t *byteArray, uint32_t len)
                 esp->currentTrackIndex = tempTrackIndex;
 
                 esp->trackChangeAckPending = cmdID;
-                esp->trackChangeTimestamp = get_millis();
                 L0x04::_0x01_iPodAck(esp, iPodAck_CmdPending, cmdID, TRACK_CHANGE_TIMEOUT);
 
                 if (esp->_playStatusHandler)
@@ -294,7 +286,6 @@ void L0x04::processLingo(esPod *esp, const uint8_t *byteArray, uint32_t len)
                 esp->currentTrackIndex = tempTrackIndex;
 
                 esp->trackChangeAckPending = cmdID;
-                esp->trackChangeTimestamp = get_millis();
                 L0x04::_0x01_iPodAck(esp, iPodAck_CmdPending, cmdID, TRACK_CHANGE_TIMEOUT);
 
                 if (esp->_playStatusHandler)
@@ -339,7 +330,6 @@ void L0x04::processLingo(esPod *esp, const uint8_t *byteArray, uint32_t len)
                 esp->currentTrackIndex = esp->trackList[esp->trackListPosition];
 
                 esp->trackChangeAckPending = cmdID;
-                esp->trackChangeTimestamp = get_millis();
                 L0x04::_0x01_iPodAck(esp, iPodAck_CmdPending, cmdID, TRACK_CHANGE_TIMEOUT);
 
                 if (esp->_playStatusHandler)
@@ -366,7 +356,6 @@ void L0x04::processLingo(esPod *esp, const uint8_t *byteArray, uint32_t len)
                 esp->currentTrackIndex = esp->trackList[esp->trackListPosition];
 
                 esp->trackChangeAckPending = cmdID;
-                esp->trackChangeTimestamp = get_millis();
                 L0x04::_0x01_iPodAck(esp, iPodAck_CmdPending, cmdID, TRACK_CHANGE_TIMEOUT);
 
                 if (esp->_playStatusHandler)
@@ -386,7 +375,6 @@ void L0x04::processLingo(esPod *esp, const uint8_t *byteArray, uint32_t len)
                 esp->play();
 
                 esp->trackChangeAckPending = cmdID;
-                esp->trackChangeTimestamp = get_millis();
                 L0x04::_0x01_iPodAck(esp, iPodAck_CmdPending, cmdID, TRACK_CHANGE_TIMEOUT);
             }
             break;
@@ -466,7 +454,6 @@ void L0x04::processLingo(esPod *esp, const uint8_t *byteArray, uint32_t len)
                 esp->currentTrackIndex = tempTrackIndex;
 
                 esp->trackChangeAckPending = cmdID;
-                esp->trackChangeTimestamp = get_millis();
                 L0x04::_0x01_iPodAck(esp, iPodAck_CmdPending, cmdID, TRACK_CHANGE_TIMEOUT);
 
                 if (esp->_playStatusHandler)
@@ -493,7 +480,6 @@ void L0x04::processLingo(esPod *esp, const uint8_t *byteArray, uint32_t len)
                 esp->currentTrackIndex = tempTrackIndex;
 
                 esp->trackChangeAckPending = cmdID;
-                esp->trackChangeTimestamp = get_millis();
                 L0x04::_0x01_iPodAck(esp, iPodAck_CmdPending, cmdID, TRACK_CHANGE_TIMEOUT);
 
                 if (esp->_playStatusHandler)

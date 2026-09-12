@@ -99,76 +99,6 @@ esPod::~esPod()
     }
 }
 
-void esPod::resetAccumulator()
-{
-    _rxIncomplete = false;
-    _accPrevByte = 0x00;
-    _accExpectedLen = 0;
-    _accCursor = 0;
-    ESP_LOGD(TAG, "Accumulator reset");
-}
-
-void esPod::resetState()
-{
-    stopTimer(_pendingTimer_0x00);
-    stopTimer(_pendingTimer_0x03);
-    stopTimer(_pendingTimer_0x04);
-    _pendingCmdId_0x00 = 0x00;
-    _pendingCmdId_0x03 = 0x00;
-    _pendingCmdId_0x04 = 0x00;
-
-    extendedInterfaceModeActive = false;
-    playStatusNotificationState = NOTIF_OFF;
-    playStatus = PB_STATE_PAUSED;
-    playPosition = 0;
-    currentTrackIndex = 0;
-    trackListPosition = 0;
-
-    // Reset stream accumulator
-    resetAccumulator();
-
-    // Flush any pending TX queue items and return buffers to free pool
-    aapCommand tempCmd;
-    while (_txQueue && xQueueReceive(_txQueue, &tempCmd, 0) == pdTRUE)
-    {
-        if (tempCmd.payload != nullptr)
-        {
-            uint8_t *bufPtr = tempCmd.payload;
-            xQueueSend(_txFreeBufferQueue, &bufPtr, 0);
-        }
-    }
-
-    // Flush any pending timer callback messages
-    TimerCallbackMessage tempTimerMsg;
-    while (_timerQueue && xQueueReceive(_timerQueue, &tempTimerMsg, 0) == pdTRUE)
-    {
-        // Discard pending timer message
-    }
-
-    ESP_LOGI(TAG, "State reset clean");
-}
-
-void esPod::attachPlayControlHandler(playStatusHandler_t playHandler)
-{
-    // Save pointer to the user-supplied playback control handler
-    _playStatusHandler = playHandler;
-    ESP_LOGI(TAG, "playStatusHandler attached");
-}
-
-void esPod::attachTxHandler(rawTxHandler_t txHandler)
-{
-    // Save pointer to external raw transport transmit function (e.g., TinyUSB PL2303 write)
-    _rawTxHandler = txHandler;
-    ESP_LOGI(TAG, "rawTxHandler attached");
-}
-
-void esPod::attachRxHandler(rawRxHandler_t rxHandler)
-{
-    // Save pointer to external raw transport receive function (e.g., TinyUSB PL2303 read)
-    _rawRxHandler = rxHandler;
-    ESP_LOGI(TAG, "rawRxHandler attached");
-}
-
 #pragma endregion
 
 #pragma region Direct Raw Ingestion API
@@ -259,6 +189,98 @@ size_t esPod::processRawBuffer(const uint8_t *data, size_t len)
     return processedBytes;
 }
 
+void esPod::resetState()
+{
+    stopTimer(_pendingTimer_0x00);
+    stopTimer(_pendingTimer_0x03);
+    stopTimer(_pendingTimer_0x04);
+    _pendingCmdId_0x00 = 0x00;
+    _pendingCmdId_0x03 = 0x00;
+    _pendingCmdId_0x04 = 0x00;
+
+    extendedInterfaceModeActive = false;
+    playStatusNotificationState = NOTIF_OFF;
+    playStatus = PB_STATE_PAUSED;
+    playPosition = 0;
+    trackChangeAckPending = 0x00;
+    _albumNameUpdated = false;
+    _artistNameUpdated = false;
+    _trackTitleUpdated = false;
+    _trackDurationUpdated = false;
+
+    currentTrackIndex = 0;
+    prevTrackIndex = TOTAL_NUM_TRACKS - 1;
+    for (uint16_t i = 0; i < TOTAL_NUM_TRACKS; i++)
+    {
+        trackList[i] = 0;
+    }
+    trackListPosition = 0;
+
+    // Reset stream accumulator
+    resetAccumulator();
+
+    // Flush any pending TX queue items and return buffers to free pool
+    aapCommand tempCmd;
+    while (_txQueue && xQueueReceive(_txQueue, &tempCmd, 0) == pdTRUE)
+    {
+        if (tempCmd.payload != nullptr)
+        {
+            uint8_t *bufPtr = tempCmd.payload;
+            xQueueSend(_txFreeBufferQueue, &bufPtr, 0);
+        }
+    }
+
+    // Reset ring buffer
+    if (_cmdRingBuffer)
+    {
+        size_t tempSize = 0;
+        void *tempItem = nullptr;
+        while ((tempItem = xRingbufferReceive(_cmdRingBuffer, &tempSize, 0)) != NULL)
+        {
+            vRingbufferReturnItem(_cmdRingBuffer, tempItem);
+        }
+    }
+
+    // Flush any pending timer callback messages
+    TimerCallbackMessage tempTimerMsg;
+    while (_timerQueue && xQueueReceive(_timerQueue, &tempTimerMsg, 0) == pdTRUE)
+    {
+        // Discard pending timer message
+    }
+
+    ESP_LOGI(TAG, "State reset clean");
+}
+
+void esPod::attachPlayControlHandler(playStatusHandler_t playHandler)
+{
+    // Save pointer to the user-supplied playback control handler
+    _playStatusHandler = playHandler;
+    ESP_LOGI(TAG, "playStatusHandler attached");
+}
+
+void esPod::attachTxHandler(rawTxHandler_t txHandler)
+{
+    // Save pointer to external raw transport transmit function (e.g., TinyUSB PL2303 write)
+    _rawTxHandler = txHandler;
+    ESP_LOGI(TAG, "rawTxHandler attached");
+}
+
+void esPod::attachRxHandler(rawRxHandler_t rxHandler)
+{
+    // Save pointer to external raw transport receive function
+    _rawRxHandler = rxHandler;
+    ESP_LOGI(TAG, "rawRxHandler attached");
+}
+
+void esPod::resetAccumulator()
+{
+    _accCursor = 0;
+    _accExpectedLen = 0;
+    _accPrevByte = 0x00;
+    _rxIncomplete = false;
+    ESP_LOGD(TAG, "Accumulator reset");
+}
+
 #pragma endregion
 
 #pragma region Metadata and Playback Engine Controls
@@ -267,12 +289,6 @@ void esPod::play(bool noLoop)
 {
     // Transition internal playback engine state to PLAYING
     playStatus = PB_STATE_PLAYING;
-
-    // Notify connected accessory host if Extended Lingo (0x04) notifications are active
-    if (playStatusNotificationState == NOTIF_ON)
-    {
-        L0x04::_0x27_PlayStatusNotification(this, 0x01, currentTrackIndex);
-    }
 
     // Trigger external playback controller callback unless internal loop update is requested
     if (!noLoop && _playStatusHandler != nullptr)
@@ -287,12 +303,6 @@ void esPod::pause(bool noLoop)
     // Transition internal playback engine state to PAUSED
     playStatus = PB_STATE_PAUSED;
 
-    // Send play status notification frame to host if notification engine is enabled
-    if (playStatusNotificationState == NOTIF_ON)
-    {
-        L0x04::_0x27_PlayStatusNotification(this, 0x01, currentTrackIndex);
-    }
-
     // Trigger external play controller (e.g., A2DP sink pause)
     if (!noLoop && _playStatusHandler != nullptr)
     {
@@ -305,12 +315,6 @@ void esPod::stop(bool noLoop)
 {
     // Transition internal engine state to STOPPED
     playStatus = PB_STATE_STOPPED;
-
-    // Send stopped notification frame to accessory host
-    if (playStatusNotificationState == NOTIF_ON)
-    {
-        L0x04::_0x27_PlayStatusNotification(this, 0x00);
-    }
 
     // Trigger external play controller (e.g., A2DP sink stop)
     if (!noLoop && _playStatusHandler != nullptr)
@@ -325,8 +329,8 @@ void esPod::updatePlayPosition(uint32_t position)
     // Update active play position in milliseconds
     playPosition = position;
 
-    // Push periodic play position updates (0x04) to host if notifications are subscribed
-    if (playStatusNotificationState == NOTIF_ON)
+    // Push periodic play position updates (0x04) to host if notifications are subscribed and no track change is pending
+    if (playStatusNotificationState == NOTIF_ON && trackChangeAckPending == 0x00)
     {
         L0x04::_0x27_PlayStatusNotification(this, 0x04, playPosition);
     }
@@ -334,66 +338,203 @@ void esPod::updatePlayPosition(uint32_t position)
 
 void esPod::updateAlbumName(const char *incAlbumName)
 {
-    // Update album string only if changed to prevent redundant ACK signaling
-    if (incAlbumName && strcmp(albumName, incAlbumName) != 0)
+    if (incAlbumName)
     {
-        strncpy(albumName, incAlbumName, sizeof(albumName) - 1);
-        _albumNameUpdated = true;
+        if (trackChangeAckPending > 0x00)
+        {
+            if (!_albumNameUpdated)
+            {
+                strncpy(albumName, incAlbumName, sizeof(albumName) - 1);
+                albumName[sizeof(albumName) - 1] = '\0';
+                _albumNameUpdated = true;
+                ESP_LOGI(TAG, "Album updated to: %s", albumName);
+            }
+            else
+            {
+                ESP_LOGD(TAG, "Album already updated to: %s", albumName);
+            }
+        }
+        else
+        {
+            if (strcmp(incAlbumName, albumName) != 0)
+            {
+                strncpy(prevAlbumName, albumName, sizeof(prevAlbumName) - 1);
+                prevAlbumName[sizeof(prevAlbumName) - 1] = '\0';
+                strncpy(albumName, incAlbumName, sizeof(albumName) - 1);
+                albumName[sizeof(albumName) - 1] = '\0';
+                _albumNameUpdated = true;
+                ESP_LOGI(TAG, "Album updated to: %s", albumName);
+            }
+            else
+            {
+                ESP_LOGD(TAG, "Album already updated to: %s", albumName);
+            }
+        }
         _checkAllMetaUpdated();
     }
 }
 
 void esPod::updateArtistName(const char *incArtistName)
 {
-    // Update artist string only if changed
-    if (incArtistName && strcmp(artistName, incArtistName) != 0)
+    if (incArtistName)
     {
-        strncpy(artistName, incArtistName, sizeof(artistName) - 1);
-        _artistNameUpdated = true;
+        if (trackChangeAckPending > 0x00)
+        {
+            if (!_artistNameUpdated)
+            {
+                strncpy(artistName, incArtistName, sizeof(artistName) - 1);
+                artistName[sizeof(artistName) - 1] = '\0';
+                _artistNameUpdated = true;
+                ESP_LOGI(TAG, "Artist updated to: %s", artistName);
+            }
+            else
+            {
+                ESP_LOGD(TAG, "Artist already updated to: %s", artistName);
+            }
+        }
+        else
+        {
+            if (strcmp(incArtistName, artistName) != 0)
+            {
+                strncpy(prevArtistName, artistName, sizeof(prevArtistName) - 1);
+                prevArtistName[sizeof(prevArtistName) - 1] = '\0';
+                strncpy(artistName, incArtistName, sizeof(artistName) - 1);
+                artistName[sizeof(artistName) - 1] = '\0';
+                _artistNameUpdated = true;
+                ESP_LOGI(TAG, "Artist updated to: %s", artistName);
+            }
+            else
+            {
+                ESP_LOGD(TAG, "Artist already updated to: %s", artistName);
+            }
+        }
         _checkAllMetaUpdated();
     }
 }
 
 void esPod::updateTrackTitle(const char *incTrackTitle)
 {
-    // Update track title string only if changed
-    if (incTrackTitle && strcmp(trackTitle, incTrackTitle) != 0)
+    if (incTrackTitle)
     {
-        strncpy(trackTitle, incTrackTitle, sizeof(trackTitle) - 1);
-        _trackTitleUpdated = true;
+        if (trackChangeAckPending > 0x00)
+        {
+            if (!_trackTitleUpdated)
+            {
+                strncpy(trackTitle, incTrackTitle, sizeof(trackTitle) - 1);
+                trackTitle[sizeof(trackTitle) - 1] = '\0';
+                _trackTitleUpdated = true;
+                ESP_LOGI(TAG, "Title updated to: %s", trackTitle);
+            }
+            else
+            {
+                ESP_LOGD(TAG, "Title already updated to: %s", trackTitle);
+            }
+        }
+        else
+        {
+            if (strcmp(incTrackTitle, prevTrackTitle) == 0)
+            {
+                // Spontaneous PREVIOUS track action detected from phone
+                trackListPosition = (trackListPosition + TOTAL_NUM_TRACKS - 1) % TOTAL_NUM_TRACKS;
+                uint32_t tempIndex = currentTrackIndex;
+                currentTrackIndex = prevTrackIndex;
+                prevTrackIndex = tempIndex;
+                trackList[trackListPosition] = currentTrackIndex;
+
+                strncpy(prevTrackTitle, trackTitle, sizeof(prevTrackTitle) - 1);
+                prevTrackTitle[sizeof(prevTrackTitle) - 1] = '\0';
+                strncpy(trackTitle, incTrackTitle, sizeof(trackTitle) - 1);
+                trackTitle[sizeof(trackTitle) - 1] = '\0';
+                _trackTitleUpdated = true;
+                ESP_LOGI(TAG, "Title updated (PREV detected) to: %s (trackIndex: %lu, prevIndex: %lu)",
+                         trackTitle, (unsigned long)currentTrackIndex, (unsigned long)prevTrackIndex);
+            }
+            else if (strcmp(incTrackTitle, trackTitle) != 0)
+            {
+                // Spontaneous NEXT / new track action detected from phone
+                trackListPosition = (trackListPosition + 1) % TOTAL_NUM_TRACKS;
+                prevTrackIndex = currentTrackIndex;
+                currentTrackIndex = (currentTrackIndex + 1) % TOTAL_NUM_TRACKS;
+                trackList[trackListPosition] = currentTrackIndex;
+
+                strncpy(prevTrackTitle, trackTitle, sizeof(prevTrackTitle) - 1);
+                prevTrackTitle[sizeof(prevTrackTitle) - 1] = '\0';
+                strncpy(trackTitle, incTrackTitle, sizeof(trackTitle) - 1);
+                trackTitle[sizeof(trackTitle) - 1] = '\0';
+                _trackTitleUpdated = true;
+                ESP_LOGI(TAG, "Title updated (NEXT detected) to: %s (trackIndex: %lu, prevIndex: %lu)",
+                         trackTitle, (unsigned long)currentTrackIndex, (unsigned long)prevTrackIndex);
+            }
+            else
+            {
+                ESP_LOGD(TAG, "Title already updated to: %s", trackTitle);
+            }
+        }
         _checkAllMetaUpdated();
     }
 }
 
 void esPod::updateTrackDuration(uint32_t incTrackDuration)
 {
-    // Update track duration value in milliseconds
-    if (trackDuration != incTrackDuration)
+    if (trackChangeAckPending > 0x00)
     {
-        trackDuration = incTrackDuration;
-        _trackDurationUpdated = true;
-        _checkAllMetaUpdated();
+        if (!_trackDurationUpdated)
+        {
+            trackDuration = incTrackDuration;
+            _trackDurationUpdated = true;
+            ESP_LOGI(TAG, "Track duration updated to: %lu ms", (unsigned long)trackDuration);
+        }
+        else
+        {
+            ESP_LOGD(TAG, "Track duration already updated to: %lu ms", (unsigned long)trackDuration);
+        }
     }
+    else
+    {
+        if (trackDuration != incTrackDuration)
+        {
+            prevTrackDuration = trackDuration;
+            trackDuration = incTrackDuration;
+            _trackDurationUpdated = true;
+            ESP_LOGI(TAG, "Track duration updated to: %lu ms", (unsigned long)trackDuration);
+        }
+        else
+        {
+            ESP_LOGD(TAG, "Track duration already updated to: %lu ms", (unsigned long)trackDuration);
+        }
+    }
+    _checkAllMetaUpdated();
 }
 
 void esPod::_checkAllMetaUpdated()
 {
-    // Aggregate metadata gatekeeper: clear update flags when metadata items arrive
-    if (_trackTitleUpdated || _artistNameUpdated || _albumNameUpdated)
+    // Aggregate metadata gatekeeper: wait until ALL 4 attributes have arrived
+    if (_albumNameUpdated && _artistNameUpdated && _trackTitleUpdated && _trackDurationUpdated)
     {
-        _trackTitleUpdated = false;
-        _artistNameUpdated = false;
-        _albumNameUpdated = false;
-        _trackDurationUpdated = false;
-
         // If a track change command was waiting on metadata update, release the pending iPod ACK
-        if (trackChangeAckPending != 0x00)
+        if (trackChangeAckPending > 0x00)
         {
-            if (trackChangeAckPending <= 0xFF)
+            if (trackChangeAckPending == 0x11)
             {
-                L0x00::_0x02_iPodAck(this, iPodAck_OK, (uint8_t)trackChangeAckPending);
+                L0x03::_0x00_iPodAck(this, iPodAck_OK, trackChangeAckPending);
+            }
+            else
+            {
+                L0x04::_0x01_iPodAck(this, iPodAck_OK, trackChangeAckPending);
             }
             trackChangeAckPending = 0x00;
+        }
+
+        _albumNameUpdated = false;
+        _artistNameUpdated = false;
+        _trackTitleUpdated = false;
+        _trackDurationUpdated = false;
+
+        // Notify connected accessory host over Extended Interface Lingo (0x04) of the track change
+        if (playStatusNotificationState == NOTIF_ON)
+        {
+            ESP_LOGI(TAG, "Notifying car of track change (index: %lu)", (unsigned long)currentTrackIndex);
+            L0x04::_0x27_PlayStatusNotification(this, 0x01, currentTrackIndex);
         }
     }
 }
@@ -610,6 +751,7 @@ void esPod::_timerTask(void *pvParameters)
                     L0x04::_0x01_iPodAck(esp, iPodAck_OK, msg.cmdID);
                     break;
                 }
+
             }
         }
     }
