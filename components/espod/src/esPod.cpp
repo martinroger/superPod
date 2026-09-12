@@ -421,9 +421,9 @@ esp_err_t esPod::_initFreeRTOSStack()
         xQueueSend(_txFreeBufferQueue, &bufPtr, 0);
     }
 
-    _pendingTimer_0x00 = xTimerCreate("pTimer0x00", pdMS_TO_TICKS(100), pdFALSE, (void *)0, _pendingTimerCallback_0x00);
-    _pendingTimer_0x03 = xTimerCreate("pTimer0x03", pdMS_TO_TICKS(100), pdFALSE, (void *)3, _pendingTimerCallback_0x03);
-    _pendingTimer_0x04 = xTimerCreate("pTimer0x04", pdMS_TO_TICKS(100), pdFALSE, (void *)4, _pendingTimerCallback_0x04);
+    _pendingTimer_0x00 = xTimerCreate("pTimer0x00", pdMS_TO_TICKS(100), pdFALSE, (void *)this, _pendingTimerCallback_0x00);
+    _pendingTimer_0x03 = xTimerCreate("pTimer0x03", pdMS_TO_TICKS(100), pdFALSE, (void *)this, _pendingTimerCallback_0x03);
+    _pendingTimer_0x04 = xTimerCreate("pTimer0x04", pdMS_TO_TICKS(100), pdFALSE, (void *)this, _pendingTimerCallback_0x04);
 
     xTaskCreate(_rxTask, "_rxTask", RX_TASK_STACK_SIZE, this, RX_TASK_PRIORITY, &_rxTaskHandle);
     xTaskCreate(_processTask, "_processTask", PROCESS_TASK_STACK_SIZE, this, PROCESS_TASK_PRIORITY, &_processTaskHandle);
@@ -589,6 +589,15 @@ void esPod::_timerTask(void *pvParameters)
             // Only dispatch delayed iPod ACK responses if esPod is enabled
             if (!esp->disabled)
             {
+                if (msg.cmdID == esp->trackChangeAckPending)
+                {
+                    esp->trackChangeAckPending = 0x00;
+                    esp->_albumNameUpdated = false;
+                    esp->_artistNameUpdated = false;
+                    esp->_trackTitleUpdated = false;
+                    esp->_trackDurationUpdated = false;
+                }
+
                 switch (msg.targetLingo)
                 {
                 case 0x00:
