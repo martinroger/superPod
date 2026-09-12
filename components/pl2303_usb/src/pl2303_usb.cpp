@@ -419,6 +419,10 @@ void pl2303_usb_get_control_lines(bool *dtr, bool *rts)
 /// @brief Initializes the TinyUSB PL2303 Device Driver for ESP-IDF v6.2 (master) / esp_tinyusb v2.0+
 esp_err_t pl2303_usb_init(int task_core)
 {
+#if defined(CONFIG_PL2303_USB_LOG_LEVEL)
+    esp_log_level_set(TAG, (esp_log_level_t)CONFIG_PL2303_USB_LOG_LEVEL);
+#endif
+
     ESP_ERROR_CHECK(init_bridge_control_pins());
 
     tinyusb_config_t tusb_cfg = {};
