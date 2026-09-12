@@ -25,7 +25,7 @@ void L0x00::processLingo(esPod *esp, const uint8_t *byteArray, uint32_t len)
 
     case L0x00_RequestExtendedInterfaceMode:
     {
-        ESP_LOGD(TAG, "CMD: 0x%02x RequestExtendedInterfaceMode", cmdID);
+        ESP_LOGI(TAG, "CMD: 0x%02x RequestExtendedInterfaceMode", cmdID);
         L0x00::_0x04_ReturnExtendedInterfaceMode(esp, esp->extendedInterfaceModeActive ? 0x01 : 0x00);
     }
     break;
@@ -185,7 +185,7 @@ void L0x00::_0x02_iPodAck(esPod *esp, IPOD_ACK_CODE ackCode, uint8_t cmdID, uint
 /// @brief Returns extended interface mode status byte
 void L0x00::_0x04_ReturnExtendedInterfaceMode(esPod *esp, uint8_t extendedModeByte)
 {
-    ESP_LOGD(TAG, "Extended Interface mode: 0x%02x", extendedModeByte);
+    ESP_LOGI(TAG, "Return extended interface mode: 0x%02X", extendedModeByte);
     const uint8_t txPacket[] = {0x00, 0x04, extendedModeByte};
     esp->_queuePacket(txPacket, sizeof(txPacket));
 }
