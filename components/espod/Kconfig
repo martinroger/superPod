@@ -1,0 +1,33 @@
+menu "esPod Logging"
+
+    choice ESPOD_LOG_LEVEL_SELECTION
+        prompt "esPod Log Level"
+        default ESPOD_LOG_LEVEL_INFO
+        help
+            Select the runtime log level for the esPod state machine and Lingo handlers.
+
+        config ESPOD_LOG_LEVEL_NONE
+            bool "None"
+        config ESPOD_LOG_LEVEL_ERROR
+            bool "Error"
+        config ESPOD_LOG_LEVEL_WARN
+            bool "Warn"
+        config ESPOD_LOG_LEVEL_INFO
+            bool "Info"
+        config ESPOD_LOG_LEVEL_DEBUG
+            bool "Debug"
+        config ESPOD_LOG_LEVEL_VERBOSE
+            bool "Verbose"
+    endchoice
+
+    config ESPOD_LOG_LEVEL
+        int
+        default 0 if ESPOD_LOG_LEVEL_NONE
+        default 1 if ESPOD_LOG_LEVEL_ERROR
+        default 2 if ESPOD_LOG_LEVEL_WARN
+        default 3 if ESPOD_LOG_LEVEL_INFO
+        default 4 if ESPOD_LOG_LEVEL_DEBUG
+        default 5 if ESPOD_LOG_LEVEL_VERBOSE
+        default 3
+
+endmenu

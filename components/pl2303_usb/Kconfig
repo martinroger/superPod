@@ -1,0 +1,33 @@
+menu "PL2303 USB Logging"
+
+    choice PL2303_USB_LOG_LEVEL_SELECTION
+        prompt "PL2303 USB Log Level"
+        default PL2303_USB_LOG_LEVEL_INFO
+        help
+            Select the runtime log level for the PL2303 USB transceiver driver.
+
+        config PL2303_USB_LOG_LEVEL_NONE
+            bool "None"
+        config PL2303_USB_LOG_LEVEL_ERROR
+            bool "Error"
+        config PL2303_USB_LOG_LEVEL_WARN
+            bool "Warn"
+        config PL2303_USB_LOG_LEVEL_INFO
+            bool "Info"
+        config PL2303_USB_LOG_LEVEL_DEBUG
+            bool "Debug"
+        config PL2303_USB_LOG_LEVEL_VERBOSE
+            bool "Verbose"
+    endchoice
+
+    config PL2303_USB_LOG_LEVEL
+        int
+        default 0 if PL2303_USB_LOG_LEVEL_NONE
+        default 1 if PL2303_USB_LOG_LEVEL_ERROR
+        default 2 if PL2303_USB_LOG_LEVEL_WARN
+        default 3 if PL2303_USB_LOG_LEVEL_INFO
+        default 4 if PL2303_USB_LOG_LEVEL_DEBUG
+        default 5 if PL2303_USB_LOG_LEVEL_VERBOSE
+        default 3
+
+endmenu
