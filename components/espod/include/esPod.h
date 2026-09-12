@@ -71,7 +71,6 @@ public:
     uint8_t playStatus = PB_STATE_PAUSED;            // Current state of Playback Engine
     uint8_t playStatusNotificationState = NOTIF_OFF; // Notification engine state
     uint8_t trackChangeAckPending = 0x00;            // Pending track change marker
-    uint64_t trackChangeTimestamp = 0;            // Timestamp for last track change request
     uint8_t shuffleStatus = 0x00;                    // 0x00: No Shuffle, 0x01: Tracks, 0x02: Albums
     uint8_t repeatStatus = 0x02;                     // 0x00: Off, 0x01: One, 0x02: All
 
