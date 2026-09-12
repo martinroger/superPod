@@ -273,7 +273,10 @@ static void bt_app_rc_ct_cb(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t
                                 ESP_AVRC_MD_ATTR_ALBUM | ESP_AVRC_MD_ATTR_PLAYING_TIME;
             esp_avrc_ct_send_metadata_cmd(0, attr_mask);
 
-            // Register play position notification if callback set
+            // Register track change notification (TL 2) to trigger metadata fetching on phone track changes
+            esp_avrc_ct_send_register_notification_cmd(2, ESP_AVRC_RN_TRACK_CHANGE, 0);
+
+            // Register play position notification if callback set (TL 1)
             if (s_pos_cb != NULL) {
                 esp_avrc_ct_send_register_notification_cmd(1, ESP_AVRC_RN_PLAY_POS_CHANGED, s_pos_interval_s);
             }
@@ -284,17 +287,30 @@ static void bt_app_rc_ct_cb(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t
     case ESP_AVRC_CT_METADATA_RSP_EVT: {
         ESP_LOGI(TAG, "AVRCP Metadata Rsp attr: 0x%x", param->meta_rsp.attr_id);
         if (s_meta_cb != NULL && param->meta_rsp.attr_text != NULL) {
-            s_meta_cb(param->meta_rsp.attr_id, param->meta_rsp.attr_text);
+            uint8_t *safe_str = (uint8_t *)malloc(param->meta_rsp.attr_length + 1);
+            if (safe_str != NULL) {
+                memcpy(safe_str, param->meta_rsp.attr_text, param->meta_rsp.attr_length);
+                safe_str[param->meta_rsp.attr_length] = '\0';
+                s_meta_cb(param->meta_rsp.attr_id, safe_str);
+                free(safe_str);
+            }
         }
         break;
     }
 
     case ESP_AVRC_CT_CHANGE_NOTIFY_EVT: {
-        if (param->change_ntf.event_id == ESP_AVRC_RN_PLAY_POS_CHANGED) {
+        if (param->change_ntf.event_id == ESP_AVRC_RN_TRACK_CHANGE) {
+            ESP_LOGI(TAG, "AVRCP Track Change notification received; fetching new track metadata");
+            uint8_t attr_mask = ESP_AVRC_MD_ATTR_TITLE | ESP_AVRC_MD_ATTR_ARTIST |
+                                ESP_AVRC_MD_ATTR_ALBUM | ESP_AVRC_MD_ATTR_PLAYING_TIME;
+            esp_avrc_ct_send_metadata_cmd(0, attr_mask);
+            // Re-register track change notification (TL 2)
+            esp_avrc_ct_send_register_notification_cmd(2, ESP_AVRC_RN_TRACK_CHANGE, 0);
+        } else if (param->change_ntf.event_id == ESP_AVRC_RN_PLAY_POS_CHANGED) {
             uint32_t pos_ms = param->change_ntf.event_parameter.play_pos;
             if (s_pos_cb != NULL) {
                 s_pos_cb(pos_ms);
-                // Re-register notification for continuous play position reporting
+                // Re-register notification for continuous play position reporting (TL 1)
                 esp_avrc_ct_send_register_notification_cmd(1, ESP_AVRC_RN_PLAY_POS_CHANGED, s_pos_interval_s);
             }
         }
