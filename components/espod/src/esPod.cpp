@@ -32,6 +32,13 @@ static const char *TAG = "esPod";
 esPod::esPod(uint8_t uartNum, int rxPin, int txPin, uint32_t baud)
     : _uartPort((uart_port_t)uartNum), _rxPin(rxPin), _txPin(txPin), _baudrate(baud)
 {
+#if defined(CONFIG_ESPOD_LOG_LEVEL)
+    esp_log_level_set("esPod", (esp_log_level_t)CONFIG_ESPOD_LOG_LEVEL);
+    esp_log_level_set("L0x00", (esp_log_level_t)CONFIG_ESPOD_LOG_LEVEL);
+    esp_log_level_set("L0x03", (esp_log_level_t)CONFIG_ESPOD_LOG_LEVEL);
+    esp_log_level_set("L0x04", (esp_log_level_t)CONFIG_ESPOD_LOG_LEVEL);
+#endif
+
     if (uartNum > UART_NUM_MAX)
     {
         ESP_LOGE(TAG, "Invalid UART port number, defaulting to UART port 1");
@@ -751,7 +758,7 @@ void esPod::_timerTask(void *pvParameters)
                     L0x04::_0x01_iPodAck(esp, iPodAck_OK, msg.cmdID);
                     break;
                 }
-                ESP_LOGI(TAG, "Timer expired for Lingo 0x%02X cmd 0x%02X -> Sent iPodAck_OK", msg.targetLingo, msg.cmdID);
+
             }
         }
     }
@@ -810,7 +817,7 @@ void esPod::_queuePacket(const uint8_t *byteArray, uint32_t len)
         bufPtr[3 + len] = _checksum(byteArray, len);
 
         aapCommand cmd = {bufPtr, 3 + len + 1};
-        ESP_LOGI(TAG, "TX Packet queued: %u bytes (Lingo 0x%02X, payload %lu bytes)", (unsigned int)(3 + len + 1), byteArray[0], (unsigned long)len);
+        ESP_LOGD(TAG, "TX Packet queued: %u bytes (payload %lu bytes)", (unsigned int)(3 + len + 1), (unsigned long)len);
         xQueueSend(_txQueue, &cmd, 0);
     }
 }
@@ -827,7 +834,7 @@ void esPod::_queuePacketToFront(const uint8_t *byteArray, uint32_t len)
         bufPtr[3 + len] = _checksum(byteArray, len);
 
         aapCommand cmd = {bufPtr, 3 + len + 1};
-        ESP_LOGI(TAG, "TX Packet queued (front): %u bytes (Lingo 0x%02X, payload %lu bytes)", (unsigned int)(3 + len + 1), byteArray[0], (unsigned long)len);
+        ESP_LOGD(TAG, "TX Packet queued to front: %u bytes (payload %lu bytes)", (unsigned int)(3 + len + 1), (unsigned long)len);
         xQueueSendToFront(_txQueue, &cmd, 0);
     }
 }
@@ -856,7 +863,7 @@ void esPod::_processPacket(const uint8_t *byteArray, size_t len)
     const uint8_t *cmdData = &lingoPtr[1];
     uint32_t cmdLen = payloadLen - 1;
 
-    ESP_LOGI(TAG, "RX iAP Frame: Lingo 0x%02X, CMD 0x%02X (payload %lu bytes)", lingoID, cmdData[0], (unsigned long)cmdLen);
+    ESP_LOGD(TAG, "RX iAP Packet: Lingo=0x%02x, cmdLen=%lu, totalLen=%u", lingoID, (unsigned long)cmdLen, (unsigned int)len);
 
     // Route command payload to target Lingo state machine handler
     switch (lingoID)

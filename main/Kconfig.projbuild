@@ -98,4 +98,36 @@ menu "superPod Core Configuration"
                 Initial virtual baud rate reported to USB host prior to host SET_LINE requests.
     endmenu
 
+    menu "superPod Logging Configuration"
+        choice SUPERPOD_MAIN_LOG_LEVEL_SELECTION
+            prompt "Main Orchestrator Log Level"
+            default SUPERPOD_MAIN_LOG_LEVEL_INFO
+            help
+                Select the runtime log level for the superPod main orchestrator.
+
+            config SUPERPOD_MAIN_LOG_LEVEL_NONE
+                bool "None"
+            config SUPERPOD_MAIN_LOG_LEVEL_ERROR
+                bool "Error"
+            config SUPERPOD_MAIN_LOG_LEVEL_WARN
+                bool "Warn"
+            config SUPERPOD_MAIN_LOG_LEVEL_INFO
+                bool "Info"
+            config SUPERPOD_MAIN_LOG_LEVEL_DEBUG
+                bool "Debug"
+            config SUPERPOD_MAIN_LOG_LEVEL_VERBOSE
+                bool "Verbose"
+        endchoice
+
+        config SUPERPOD_MAIN_LOG_LEVEL
+            int
+            default 0 if SUPERPOD_MAIN_LOG_LEVEL_NONE
+            default 1 if SUPERPOD_MAIN_LOG_LEVEL_ERROR
+            default 2 if SUPERPOD_MAIN_LOG_LEVEL_WARN
+            default 3 if SUPERPOD_MAIN_LOG_LEVEL_INFO
+            default 4 if SUPERPOD_MAIN_LOG_LEVEL_DEBUG
+            default 5 if SUPERPOD_MAIN_LOG_LEVEL_VERBOSE
+            default 3
+    endmenu
+
 endmenu

@@ -5,3 +5,7 @@ idf_component_register(SRCS "src/esPod.cpp"
                        INCLUDE_DIRS "include"
                        REQUIRES esp_ringbuf esp_driver_uart esp_driver_gpio
                        PRIV_REQUIRES driver freertos esp_timer log)
+
+if(CONFIG_ESPOD_LOG_LEVEL)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE "-DLOG_LOCAL_LEVEL=${CONFIG_ESPOD_LOG_LEVEL}")
+endif()

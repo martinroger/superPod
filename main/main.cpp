@@ -336,10 +336,23 @@ void playStatusHandler(PB_COMMAND playCommand)
  */
 extern "C" void app_main(void)
 {
-    // Step 0: Centrally configure subsystem log verbosity
-    esp_log_level_set("PL2303_USB", ESP_LOG_DEBUG);
-    esp_log_level_set("esPod", ESP_LOG_DEBUG);
-    esp_log_level_set(TAG, ESP_LOG_DEBUG);
+    // Step 0: Configure main orchestrator log level and synchronize master log level
+#if defined(CONFIG_SUPERPOD_MAIN_LOG_LEVEL)
+    esp_log_level_set(TAG, (esp_log_level_t)CONFIG_SUPERPOD_MAIN_LOG_LEVEL);
+#endif
+
+#if CONFIG_LOG_MASTER_LEVEL
+    esp_log_level_t max_comp_level = (esp_log_level_t)CONFIG_SUPERPOD_MAIN_LOG_LEVEL;
+#if defined(CONFIG_ESPOD_LOG_LEVEL)
+    if ((esp_log_level_t)CONFIG_ESPOD_LOG_LEVEL > max_comp_level) max_comp_level = (esp_log_level_t)CONFIG_ESPOD_LOG_LEVEL;
+#endif
+#if defined(CONFIG_PL2303_USB_LOG_LEVEL)
+    if ((esp_log_level_t)CONFIG_PL2303_USB_LOG_LEVEL > max_comp_level) max_comp_level = (esp_log_level_t)CONFIG_PL2303_USB_LOG_LEVEL;
+#endif
+    if (esp_log_get_level_master() < max_comp_level) {
+        esp_log_set_level_master(max_comp_level);
+    }
+#endif
 
     ESP_LOGI(TAG, "superPod firmware starting up on ESP32-S31...");
     ESP_LOGI(TAG, "Reset reason: %d", esp_reset_reason());
